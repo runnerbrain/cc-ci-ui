@@ -7,15 +7,6 @@ import Layout from '../components/Layout';
 import AttributeForm from '../components/AttributeForm';
 import FirebaseContext from '../lib/FirebaseContext'; // Import the centralized context
 
-// --- Firebase Configuration (REPLACE WITH YOUR OWN) ---
-// You will get this from your Firebase project settings after creating it.
-// For local development, create a .env.local file in your project root and add these:
-// NEXT_PUBLIC_FIREBASE_API_KEY=YOUR_API_KEY
-// NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=YOUR_AUTH_DOMAIN
-// NEXT_PUBLIC_FIREBASE_PROJECT_ID=YOUR_PROJECT_ID
-// NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=YOUR_STORAGE_BUCKET
-// NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=YOUR_MESSAGING_SENDER_ID
-// NEXT_PUBLIC_FIREBASE_APP_ID=YOUR_APP_ID
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
   authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,

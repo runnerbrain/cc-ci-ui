@@ -1,5 +1,4 @@
 
-
 // _app.js (This file should exist in your Next.js project's pages directory)
 import '../styles/globals.css'; // You'll need to create this file for Tailwind CSS
 import Head from 'next/head';
