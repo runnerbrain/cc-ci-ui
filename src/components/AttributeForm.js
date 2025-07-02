@@ -6,6 +6,8 @@ export default function AttributeForm({ subProcess, onSave }) {
   const [attributes, setAttributes] = useState({});
   const [newAttributeKey, setNewAttributeKey] = useState('');
   const [newAttributeValue, setNewAttributeValue] = useState('');
+  const [editKey, setEditKey] = useState(null);
+  const [editOriginalKey, setEditOriginalKey] = useState(null);
 
   // Use the context to get Firebase instances
   const firebaseContext = useContext(FirebaseContext);
@@ -21,6 +23,13 @@ export default function AttributeForm({ subProcess, onSave }) {
     }
   }, [subProcess]);
 
+  const persistAttributes = (updatedAttributes) => {
+    setAttributes(updatedAttributes);
+    if (onSave && subProcess) {
+      onSave({ ...subProcess, attributes: updatedAttributes });
+    }
+  };
+
   const handleAttributeChange = (key, value, index = null) => {
     setAttributes(prevAttributes => {
       const newAttrs = { ...prevAttributes };
@@ -29,6 +38,7 @@ export default function AttributeForm({ subProcess, onSave }) {
       } else {
         newAttrs[key] = value;
       }
+      persistAttributes(newAttrs);
       return newAttrs;
     });
   };
@@ -39,8 +49,9 @@ export default function AttributeForm({ subProcess, onSave }) {
       if (Array.isArray(newAttrs[key])) {
         newAttrs[key].push(newValue);
       } else {
-        newAttrs[key] = [newAttrs[key], newValue]; // Convert to array if not already
+        newAttrs[key] = [newAttrs[key], newValue];
       }
+      persistAttributes(newAttrs);
       return newAttrs;
     });
   };
@@ -51,9 +62,10 @@ export default function AttributeForm({ subProcess, onSave }) {
       if (Array.isArray(newAttrs[key])) {
         newAttrs[key].splice(indexToRemove, 1);
         if (newAttrs[key].length === 0) {
-          delete newAttrs[key]; // Remove attribute if array becomes empty
+          delete newAttrs[key];
         }
       }
+      persistAttributes(newAttrs);
       return newAttrs;
     });
   };
@@ -62,120 +74,54 @@ export default function AttributeForm({ subProcess, onSave }) {
     setAttributes(prevAttributes => {
       const newAttrs = { ...prevAttributes };
       delete newAttrs[key];
+      persistAttributes(newAttrs);
       return newAttrs;
     });
   };
 
-  const handleAddNewAttribute = () => {
+  const handleEditAttribute = (key) => {
+    setEditKey(key);
+    setEditOriginalKey(key);
+    setNewAttributeKey(key);
+    const value = attributes[key];
+    setNewAttributeValue(Array.isArray(value) ? value.join(', ') : value);
+  };
+
+  const handleAddOrEditAttribute = () => {
     if (!newAttributeKey.trim()) {
       alert("Attribute name cannot be empty.");
       return;
     }
-    if (attributes.hasOwnProperty(newAttributeKey.trim())) {
-      alert(`Attribute "${newAttributeKey.trim()}" already exists.`);
+    let newAttrs = { ...attributes };
+    const value = newAttributeValue.trim();
+    if (editKey) {
+      // Editing: remove old key if changed
+      if (editOriginalKey !== newAttributeKey.trim()) {
+        delete newAttrs[editOriginalKey];
+      }
+    } else if (attributes.hasOwnProperty(newAttributeKey.trim())) {
+      alert(`Attribute \"${newAttributeKey.trim()}\" already exists.`);
       return;
     }
-
-    setAttributes(prevAttributes => {
-      const newAttrs = { ...prevAttributes };
-      const value = newAttributeValue.trim();
-      if (value.includes(',')) {
-        newAttrs[newAttributeKey.trim()] = value.split(',').map(v => v.trim());
-      } else {
-        newAttrs[newAttributeKey.trim()] = value;
-      }
-      return newAttrs;
-    });
+    newAttrs[newAttributeKey.trim()] = value.includes(',') ? value.split(',').map(v => v.trim()) : value;
+    persistAttributes(newAttrs);
     setNewAttributeKey('');
     setNewAttributeValue('');
-  };
-
-  const handleSave = () => {
-    if (onSave && subProcess) {
-      onSave({ ...subProcess, attributes });
-    }
+    setEditKey(null);
+    setEditOriginalKey(null);
   };
 
   return (
     <div>
-      {Object.keys(attributes).length === 0 && (
-        <p className="text-gray-500 italic mb-4">No attributes defined. Add one below!</p>
-      )}
-      {Object.entries(attributes).map(([key, value]) => (
-        <div key={key} className="relative group mb-4 border border-gray-200 p-3 rounded-md bg-gray-50">
-          <button
-            onClick={() => handleRemoveAttribute(key)}
-            className="absolute top-1 right-1 p-1 rounded-full text-gray-400 hover:bg-red-100 hover:text-red-600 opacity-0 group-hover:opacity-100 transition-opacity"
-            title={`Remove ${key} attribute`}
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-              <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
-            </svg>
-          </button>
-          <label className="block text-sm font-medium text-gray-700 mb-2 font-bold">{key}:</label>
-          {Array.isArray(value) ? (
-            <>
-              {value.map((val, index) => (
-                <div key={index} className="flex items-center mb-2 space-x-2">
-                  <input
-                    type="text"
-                    value={val}
-                    onChange={(e) => handleAttributeChange(key, e.target.value, index)}
-                    className="flex-grow p-2 border border-gray-300 rounded-md text-sm"
-                  />
-                  <button
-                    onClick={() => handleRemoveValueFromArray(key, index)}
-                    className="bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded-md text-xs font-semibold"
-                  >
-                    Remove
-                  </button>
-                </div>
-              ))}
-              <div className="flex items-center mt-2 space-x-2">
-                <input
-                  type="text"
-                  placeholder="Add new value"
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && e.target.value.trim()) {
-                      handleAddValueToArray(key, e.target.value.trim());
-                      e.target.value = '';
-                    }
-                  }}
-                  className="flex-grow p-2 border border-gray-300 rounded-md text-sm"
-                />
-                <button
-                  onClick={() => {
-                    const input = document.querySelector(`#add-value-${key}`);
-                    if (input?.value.trim()) {
-                      handleAddValueToArray(key, input.value.trim());
-                      input.value = '';
-                    }
-                  }}
-                  className="bg-green-500 hover:bg-green-600 text-white px-3 py-1 rounded-md text-xs font-semibold"
-                >
-                  Add
-                </button>
-              </div>
-            </>
-          ) : (
-            <input
-              type="text"
-              value={value}
-              onChange={(e) => handleAttributeChange(key, e.target.value)}
-              className="w-full p-2 border border-gray-300 rounded-md text-sm"
-            />
-          )}
-        </div>
-      ))}
-
-      <h4 className="text-md font-bold mb-2 text-gray-800 mt-6">Add New Attribute</h4>
-      <div className="space-y-2">
+      <h4 className="text-md font-bold mb-2 text-gray-800">{editKey ? 'Edit Attribute' : 'Add New Attribute'}</h4>
+      <div className="space-y-2 mb-6">
         <input
           type="text"
           placeholder="Attribute Name"
           value={newAttributeKey}
           onChange={(e) => setNewAttributeKey(e.target.value)}
           className="w-full p-2 border border-gray-300 rounded-md"
+          disabled={!!editKey}
         />
         <input
           type="text"
@@ -185,19 +131,60 @@ export default function AttributeForm({ subProcess, onSave }) {
           className="w-full p-2 border border-gray-300 rounded-md"
         />
         <button
-          onClick={handleAddNewAttribute}
+          onClick={handleAddOrEditAttribute}
           className="w-full bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded-lg transition-colors duration-200"
         >
-          Add Attribute
+          {editKey ? 'Confirm Changes' : 'Add Attribute'}
         </button>
+        {editKey && (
+          <button
+            onClick={() => {
+              setEditKey(null);
+              setEditOriginalKey(null);
+              setNewAttributeKey('');
+              setNewAttributeValue('');
+            }}
+            className="w-full bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-2 px-4 rounded-lg transition-colors duration-200 mt-2"
+          >
+            Cancel
+          </button>
+        )}
       </div>
-
-      <button
-        onClick={handleSave}
-        className="mt-6 w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-lg shadow-md transition-colors duration-200"
-      >
-        Save Changes
-      </button>
+      {Object.keys(attributes).length === 0 && (
+        <p className="text-gray-500 italic mb-4">No attributes defined. Add one above!</p>
+      )}
+      {Object.entries(attributes).map(([key, value]) => (
+        <div key={key} className="relative group mb-4 p-3 bg-gray-100 rounded-lg">
+          <div className="flex items-center justify-between">
+            <div>
+              <label className="block text-sm font-extrabold text-gray-700 mb-1">{key}</label>
+              <div className="text-base text-gray-800 bg-white px-2 py-1 rounded select-text" style={{ fontFamily: 'Noto Sans, monospace' }}>
+                {Array.isArray(value) ? value.join(', ') : value}
+              </div>
+            </div>
+            <div className="flex items-center space-x-2 ml-4">
+              <button
+                onClick={() => handleEditAttribute(key)}
+                className="text-blue-500 hover:text-blue-700 p-1"
+                title="Edit Attribute"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536M9 13h3l8-8a2.828 2.828 0 00-4-4l-8 8v3zm0 0v3h3" />
+                </svg>
+              </button>
+              <button
+                onClick={() => handleRemoveAttribute(key)}
+                className="text-red-500 hover:text-red-700 p-1"
+                title="Delete Attribute"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+          </div>
+        </div>
+      ))}
     </div>
   );
 }

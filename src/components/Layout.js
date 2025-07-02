@@ -24,12 +24,12 @@ export default function Layout({ children, userId, onAddProcessTitle, processTit
   return (
     <div className="min-h-screen flex flex-col bg-gray-100">
       <Head>
-        <title>CMDB CI Management</title>
+        <title>Verspeeten CI Management</title>
         <link rel="icon" href="/favicon.ico" />
       </Head>
 
       <header className="bg-gray-900 text-white p-4 shadow-md flex justify-between items-center">
-        <h1 className="text-2xl font-bold">CMDB CI Management</h1>
+        <h1 className="text-2xl font-bold">Verspeeten CI Management</h1>
         <div className="flex items-center space-x-4">
           <span className="text-sm text-gray-300">User ID: {userId || 'N/A'}</span>
           <button
