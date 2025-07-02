@@ -102,7 +102,16 @@ export default function AttributeForm({ subProcess, onSave }) {
         <p className="text-gray-500 italic mb-4">No attributes defined. Add one below!</p>
       )}
       {Object.entries(attributes).map(([key, value]) => (
-        <div key={key} className="mb-4 border border-gray-200 p-3 rounded-md bg-gray-50">
+        <div key={key} className="relative group mb-4 border border-gray-200 p-3 rounded-md bg-gray-50">
+          <button
+            onClick={() => handleRemoveAttribute(key)}
+            className="absolute top-1 right-1 p-1 rounded-full text-gray-400 hover:bg-red-100 hover:text-red-600 opacity-0 group-hover:opacity-100 transition-opacity"
+            title={`Remove ${key} attribute`}
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+              <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+            </svg>
+          </button>
           <label className="block text-sm font-medium text-gray-700 mb-2 font-bold">{key}:</label>
           {Array.isArray(value) ? (
             <>
@@ -147,28 +156,14 @@ export default function AttributeForm({ subProcess, onSave }) {
                   Add
                 </button>
               </div>
-              <button
-                onClick={() => handleRemoveAttribute(key)}
-                className="mt-3 w-full bg-red-600 hover:bg-red-700 text-white py-2 rounded-md font-semibold text-sm"
-              >
-                Remove Entire Attribute
-              </button>
             </>
           ) : (
-            <div className="flex items-center space-x-2">
-              <input
-                type="text"
-                value={value}
-                onChange={(e) => handleAttributeChange(key, e.target.value)}
-                className="flex-grow p-2 border border-gray-300 rounded-md text-sm"
-              />
-              <button
-                onClick={() => handleRemoveAttribute(key)}
-                className="bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded-md text-xs font-semibold"
-              >
-                Remove
-              </button>
-            </div>
+            <input
+              type="text"
+              value={value}
+              onChange={(e) => handleAttributeChange(key, e.target.value)}
+              className="w-full p-2 border border-gray-300 rounded-md text-sm"
+            />
           )}
         </div>
       ))}

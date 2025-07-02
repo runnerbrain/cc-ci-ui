@@ -452,7 +452,7 @@ export default function Home() {
           {/* Main Content Area (Sub-process List and Attribute Form) */}
           <div className="bg-white rounded-xl shadow-md flex-grow flex flex-col md:flex-row overflow-hidden">
             {/* Sub-process List */}
-            <div className="w-full md:w-80 border-b md:border-b-0 md:border-r border-gray-200 p-4 flex flex-col">
+            <div className="w-full md:w-2/5 border-b md:border-b-0 md:border-r border-gray-200 p-4 flex flex-col">
               <h3 className="text-lg font-bold mb-3 text-gray-800">{processTitles.find(pt => pt.id === activeProcessTitleId)?.name || 'Select a Process'}</h3>
               {loadingData && <div className="text-center text-gray-500 text-sm">Loading sub-processes...</div>}
               <ul className="flex-grow overflow-y-auto mb-4">
@@ -504,7 +504,7 @@ export default function Home() {
             </div>
 
             {/* Attribute Form */}
-            <div className="flex-grow p-4 overflow-y-auto">
+            <div className="w-full md:w-3/5 p-4 overflow-y-auto">
               <h3 className="text-lg font-bold mb-4 text-gray-800">
                 {selectedSubProcess ? `Attributes for: ${selectedSubProcess.name}` : 'Select a Sub-process'}
               </h3>
