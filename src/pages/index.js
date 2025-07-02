@@ -1,12 +1,23 @@
 // pages/index.js
-import { useState, useEffect, useContext } from 'react';
+import { useState, useEffect, useContext, useCallback } from 'react';
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
-import { getFirestore, collection, doc, setDoc, onSnapshot, query } from 'firebase/firestore';
+import { getFirestore, collection, doc, setDoc, onSnapshot, query, deleteDoc, updateDoc, writeBatch, getDocs, collectionGroup } from 'firebase/firestore'; // Added collectionGroup
 import Layout from '../components/Layout';
 import AttributeForm from '../components/AttributeForm';
+import { Modal } from '../components/Modal'; // Import Modal
+import { ConfirmModal } from '../components/ConfirmModal'; // Import ConfirmModal
 import FirebaseContext from '../lib/FirebaseContext'; // Import the centralized context
 
+// --- Firebase Configuration (REPLACE WITH YOUR OWN) ---
+// You will get this from your Firebase project settings after creating it.
+// For local development, create a .env.local file in your project root and add these:
+// NEXT_PUBLIC_FIREBASE_API_KEY=YOUR_API_KEY
+// NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=YOUR_AUTH_DOMAIN
+// NEXT_PUBLIC_FIREBASE_PROJECT_ID=YOUR_PROJECT_ID
+// NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=YOUR_STORAGE_BUCKET
+// NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=YOUR_MESSAGING_SENDER_ID
+// NEXT_PUBLIC_FIREBASE_APP_ID=YOUR_APP_ID
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
   authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
@@ -37,15 +48,27 @@ if (typeof window !== 'undefined' && firebaseConfig.projectId && !app) {
 export default function Home() {
   const [currentUserId, setCurrentUserId] = useState(null);
   const [loadingFirebase, setLoadingFirebase] = useState(true);
-  const [loadingData, setLoadingData] = useState(true); // Keep true initially
+  const [loadingData, setLoadingData] = useState(true);
   const [processTitles, setProcessTitles] = useState([]);
   const [subProcesses, setSubProcesses] = useState({});
   const [activeProcessTitleId, setActiveProcessTitleId] = useState(null);
   const [selectedSubProcess, setSelectedSubProcess] = useState(null);
 
+  // Modals state
+  const [isEditProcessTitleModalOpen, setIsEditProcessTitleModalOpen] = useState(false);
+  const [processTitleToEdit, setProcessTitleToEdit] = useState(null);
+  const [isDeleteProcessTitleModalOpen, setIsDeleteProcessTitleModalOpen] = useState(false);
+  const [processTitleToDelete, setProcessTitleToDelete] = useState(null);
+
+  const [isEditSubProcessModalOpen, setIsEditSubProcessModalOpen] = useState(false);
+  const [subProcessToEdit, setSubProcessToEdit] = useState(null);
+  const [isDeleteSubProcessModalOpen, setIsDeleteSubProcessModalOpen] = useState(false);
+  const [subProcessToDelete, setSubProcessToDelete] = useState(null);
+
+
   // --- Firebase Authentication Effect ---
   useEffect(() => {
-    // If Firebase is not configured via .env.local, skip Firebase auth/data fetching
+    // If Firebase is NOT configured via .env.local, skip Firebase auth/data fetching
     if (!firebaseConfig.projectId) {
       setLoadingFirebase(false);
       // Set demo data immediately if not configured
@@ -101,7 +124,6 @@ export default function Home() {
           await signInAnonymously(auth);
         } catch (error) {
           console.error("Firebase authentication error:", error);
-          // Handle specific errors like 'auth/network-request-failed' or 'auth/internal-error'
           // You might want to show a user-friendly message here
         }
       }
@@ -112,6 +134,7 @@ export default function Home() {
   }, [auth, firebaseConfig.projectId]); // Depend on auth and projectId to re-run if they become available
 
   // --- Data Fetching Effects (Firestore) ---
+  // Effect to fetch ALL Process Titles from ALL users using a Collection Group Query
   useEffect(() => {
     // Only proceed with Firestore data fetching if db and currentUserId are available
     // and Firebase is configured (not in demo mode)
@@ -120,35 +143,53 @@ export default function Home() {
     }
 
     setLoadingData(true);
-    const processTitlesRef = collection(db, `artifacts/${firebaseConfig.appId}/users/${currentUserId}/processTitles`);
-    const unsubscribeProcessTitles = onSnapshot(query(processTitlesRef), (snapshot) => {
-      const fetchedTitles = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    // Query the 'processTitles' collection group
+    // Note: Collection Group Queries require a Firestore index if you use orderBy or where clauses.
+    // Firebase console will provide a link to create it if needed.
+    const processTitlesCollectionGroupRef = collectionGroup(db, 'processTitles');
+
+    const unsubscribeProcessTitles = onSnapshot(query(processTitlesCollectionGroupRef), (snapshot) => {
+      const fetchedTitles = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data(), userId: doc.ref.parent.parent.id })); // Capture userId
       fetchedTitles.sort((a, b) => a.name.localeCompare(b.name));
       setProcessTitles(fetchedTitles);
       setLoadingData(false);
 
-      // If no active tab or active tab no longer exists, set the first one
+      // IMPORTANT: Set activeProcessTitleId here if it's the first load or current one is invalid
       if (fetchedTitles.length > 0 && (!activeProcessTitleId || !fetchedTitles.some(t => t.id === activeProcessTitleId))) {
         setActiveProcessTitleId(fetchedTitles[0].id);
       } else if (fetchedTitles.length === 0) {
         setActiveProcessTitleId(null);
       }
     }, (error) => {
-      console.error("Error fetching process titles:", error);
+      console.error("Error fetching all process titles:", error);
       setLoadingData(false);
     });
 
     return () => unsubscribeProcessTitles();
   }, [db, currentUserId, firebaseConfig.appId, activeProcessTitleId, firebaseConfig.projectId]);
 
+  // Effect to fetch Sub-processes for the active tab (now needs to know the owner's userId)
   useEffect(() => {
     if (!db || !currentUserId || !activeProcessTitleId || !firebaseConfig.projectId) {
-      setSubProcesses(prev => ({ ...prev, [activeProcessTitleId]: [] }));
+      setSubProcesses(prev => ({ ...prev, [activeProcessTitleId]: [] })); // Clear sub-processes for current tab if conditions not met
       return;
     }
 
     setLoadingData(true);
-    const subProcessesRef = collection(db, `artifacts/${firebaseConfig.appId}/users/${currentUserId}/processTitles/${activeProcessTitleId}/subProcesses`);
+    // Find the userId owner of the activeProcessTitleId from the processTitles state
+    // This is crucial because the processTitle might belong to a different anonymous user ID
+    const processTitleOwnerUserId = processTitles.find(pt => pt.id === activeProcessTitleId)?.userId;
+
+    if (!processTitleOwnerUserId) {
+        // If we don't know the owner yet (e.g., processTitles array is still loading),
+        // or if the activeProcessTitleId doesn't exist in the fetched list,
+        // then we can't fetch sub-processes.
+        setSubProcesses(prev => ({ ...prev, [activeProcessTitleId]: [] }));
+        setLoadingData(false);
+        return;
+    }
+
+    const subProcessesRef = collection(db, `artifacts/${firebaseConfig.appId}/users/${processTitleOwnerUserId}/processTitles/${activeProcessTitleId}/subProcesses`);
     const unsubscribeSubProcesses = onSnapshot(query(subProcessesRef), (snapshot) => {
       const fetchedSubProcesses = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       fetchedSubProcesses.sort((a, b) => a.name.localeCompare(b.name));
@@ -161,13 +202,14 @@ export default function Home() {
       }
     }, (error) => {
       console.error(`Error fetching sub-processes for ${activeProcessTitleId}:`, error);
+      setSubProcesses(prev => ({ ...prev, [activeProcessTitleId]: [] })); // Clear data on error
       setLoadingData(false);
     });
 
     return () => unsubscribeSubProcesses();
-  }, [db, currentUserId, activeProcessTitleId, selectedSubProcess, firebaseConfig.appId, firebaseConfig.projectId]);
+  }, [db, currentUserId, activeProcessTitleId, selectedSubProcess, firebaseConfig.appId, firebaseConfig.projectId, processTitles]); // Added processTitles to dependencies
 
-  // --- Handlers ---
+  // --- Handlers for Process Titles ---
   const handleAddProcessTitle = async (name, dependsOn) => {
     if (!db || !currentUserId || !firebaseConfig.projectId) {
       alert("Database not ready. Please wait for authentication or configure Firebase.");
@@ -179,20 +221,92 @@ export default function Home() {
       return;
     }
     try {
+      // Save new process title under the CURRENT user's ID
       await setDoc(doc(db, `artifacts/${firebaseConfig.appId}/users/${currentUserId}/processTitles`, newId), { name, dependsOn: dependsOn || null });
       console.log("Process title added:", name);
-      setActiveProcessTitleId(newId); // Switch to new tab
+      // setActiveProcessTitleId(newId); // This will be handled by the onSnapshot listener
     } catch (e) {
       console.error("Error adding process title: ", e);
       alert("Error saving process title.");
     }
   };
 
+  const handleEditProcessTitle = async (id, newName, newDependsOn) => {
+    if (!db || !currentUserId || !firebaseConfig.projectId) {
+      alert("Database not ready. Please wait for authentication or configure Firebase.");
+      return;
+    }
+    // Find the userId owner of this process title
+    const processTitleOwnerUserId = processTitles.find(pt => pt.id === id)?.userId;
+    if (!processTitleOwnerUserId || processTitleOwnerUserId !== currentUserId) {
+        alert("You can only edit process titles you created.");
+        return;
+    }
+    try {
+      await updateDoc(doc(db, `artifacts/${firebaseConfig.appId}/users/${currentUserId}/processTitles`, id), {
+        name: newName,
+        dependsOn: newDependsOn || null
+      });
+      console.log(`Process title ${newName} updated.`);
+    } catch (e) {
+      console.error("Error updating process title: ", e);
+      alert("Error updating process title.");
+    } finally {
+      setIsEditProcessTitleModalOpen(false);
+      setProcessTitleToEdit(null);
+    }
+  };
+
+  const handleDeleteProcessTitle = async (id) => {
+    if (!db || !currentUserId || !firebaseConfig.projectId) {
+      alert("Database not ready. Please wait for authentication or configure Firebase.");
+      return;
+    }
+    // Find the userId owner of this process title
+    const processTitleOwnerUserId = processTitles.find(pt => pt.id === id)?.userId;
+    if (!processTitleOwnerUserId || processTitleOwnerUserId !== currentUserId) {
+        alert("You can only delete process titles you created.");
+        return;
+    }
+    try {
+      // Delete all sub-processes first (more complex, requires fetching them)
+      const subProcessesCollectionRef = collection(db, `artifacts/${firebaseConfig.appId}/users/${currentUserId}/processTitles/${id}/subProcesses`);
+      const subProcessDocs = await getDocs(query(subProcessesCollectionRef));
+      const batch = writeBatch(db);
+      subProcessDocs.forEach((subDoc) => {
+        batch.delete(subDoc.ref);
+      });
+      await batch.commit();
+
+      // Then delete the process title document itself
+      await deleteDoc(doc(db, `artifacts/${firebaseConfig.appId}/users/${currentUserId}/processTitles`, id));
+      console.log(`Process title ${id} and its sub-processes deleted.`);
+      // If the deleted tab was active, switch to the first available tab
+      if (activeProcessTitleId === id) {
+        setActiveProcessTitleId(processTitles.length > 1 ? processTitles[0].id : null);
+      }
+    } catch (e) {
+      console.error("Error deleting process title: ", e);
+      alert("Error deleting process title.");
+    } finally {
+      setIsDeleteProcessTitleModalOpen(false);
+      setProcessTitleToDelete(null);
+    }
+  };
+
+  // --- Handlers for Sub-processes ---
   const handleAddSubProcess = async (name) => {
     if (!db || !currentUserId || !activeProcessTitleId || !firebaseConfig.projectId) {
       alert("Please select a Process Title first or configure Firebase.");
       return;
     }
+    // Ensure sub-process is added under the owner of the active process title
+    const processTitleOwnerUserId = processTitles.find(pt => pt.id === activeProcessTitleId)?.userId;
+    if (!processTitleOwnerUserId || processTitleOwnerUserId !== currentUserId) {
+        alert("You can only add sub-processes to process titles you created.");
+        return;
+    }
+
     const newId = `SP_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
     try {
       await setDoc(doc(db, `artifacts/${firebaseConfig.appId}/users/${currentUserId}/processTitles/${activeProcessTitleId}/subProcesses`, newId), { name, attributes: {} });
@@ -203,23 +317,82 @@ export default function Home() {
     }
   };
 
-  const handleUpdateSubProcess = async (updatedSubProcess) => {
+  const handleEditSubProcess = async (id, newName) => {
+    if (!db || !currentUserId || !activeProcessTitleId || !firebaseConfig.projectId) {
+      alert("Database not ready. Please wait for authentication or configure Firebase.");
+      return;
+    }
+    // Ensure sub-process is edited under the owner of its parent process title
+    const processTitleOwnerUserId = processTitles.find(pt => pt.id === activeProcessTitleId)?.userId;
+    if (!processTitleOwnerUserId || processTitleOwnerUserId !== currentUserId) {
+        alert("You can only edit sub-processes of process titles you created.");
+        return;
+    }
+    try {
+      await updateDoc(doc(db, `artifacts/${firebaseConfig.appId}/users/${currentUserId}/processTitles/${activeProcessTitleId}/subProcesses`, id), {
+        name: newName
+      });
+      console.log(`Sub-process ${newName} updated.`);
+    } catch (e) {
+      console.error("Error updating sub-process: ", e);
+      alert("Error updating sub-process.");
+    } finally {
+      setIsEditSubProcessModalOpen(false);
+      setSubProcessToEdit(null);
+    }
+  };
+
+  const handleDeleteSubProcess = async (id) => {
+    if (!db || !currentUserId || !activeProcessTitleId || !firebaseConfig.projectId) {
+      alert("Database not ready. Please wait for authentication or configure Firebase.");
+      return;
+    }
+    // Ensure sub-process is deleted under the owner of its parent process title
+    const processTitleOwnerUserId = processTitles.find(pt => pt.id === activeProcessTitleId)?.userId;
+    if (!processTitleOwnerUserId || processTitleOwnerUserId !== currentUserId) {
+        alert("You can only delete sub-processes of process titles you created.");
+        return;
+    }
+    try {
+      await deleteDoc(doc(db, `artifacts/${firebaseConfig.appId}/users/${currentUserId}/processTitles/${activeProcessTitleId}/subProcesses`, id));
+      console.log(`Sub-process ${id} deleted.`);
+      // If the deleted sub-process was selected, deselect it
+      if (selectedSubProcess && selectedSubProcess.id === id) {
+        setSelectedSubProcess(null);
+      }
+    } catch (e) {
+      console.error("Error deleting sub-process: ", e);
+      alert("Error deleting sub-process.");
+    } finally {
+      setIsDeleteSubProcessModalOpen(false);
+      setSubProcessToDelete(null);
+    }
+  };
+
+  const handleUpdateSubProcessAttributes = useCallback(async (updatedSubProcess) => {
     if (!db || !currentUserId || !activeProcessTitleId || !updatedSubProcess || !firebaseConfig.projectId) {
       alert("Cannot save: Database not ready, no sub-process selected, or Firebase not configured.");
       return;
     }
+    // Ensure attributes are updated under the owner of its parent process title
+    const processTitleOwnerUserId = processTitles.find(pt => pt.id === activeProcessTitleId)?.userId;
+    if (!processTitleOwnerUserId || processTitleOwnerUserId !== currentUserId) {
+        alert("You can only update attributes of sub-processes you created.");
+        return;
+    }
     try {
       await setDoc(doc(db, `artifacts/${firebaseConfig.appId}/users/${currentUserId}/processTitles/${activeProcessTitleId}/subProcesses`, updatedSubProcess.id), {
-        name: updatedSubProcess.name,
-        attributes: updatedSubProcess.attributes
+        name: updatedSubProcess.name, // Ensure name is also saved if it was passed in the updated object
+        attributes: JSON.parse(JSON.stringify(updatedSubProcess.attributes)) // Deep copy to ensure no mutation issues
       });
-      console.log("Sub-process updated:", updatedSubProcess.name);
+      console.log("Sub-process attributes updated:", updatedSubProcess.name);
       alert(`Changes for "${updatedSubProcess.name}" saved!`);
     } catch (e) {
-      console.error("Error updating sub-process: ", e);
-      alert("Error saving sub-process.");
+      console.error("Error updating sub-process attributes: ", e);
+      alert("Error saving sub-process attributes.");
     }
-  };
+  }, [db, currentUserId, activeProcessTitleId, firebaseConfig.appId, firebaseConfig.projectId, processTitles]);
+
 
   if (loadingFirebase) {
     return <Layout><div className="text-center py-8 text-gray-600">Initializing Firebase...</div></Layout>;
@@ -227,7 +400,13 @@ export default function Home() {
 
   return (
     <FirebaseContext.Provider value={{ db, auth, currentUserId, firebaseAppId: firebaseConfig.appId }}>
-      <Layout userId={currentUserId} onAddProcessTitle={handleAddProcessTitle} processTitles={processTitles}>
+      <Layout
+        userId={currentUserId}
+        onAddProcessTitle={handleAddProcessTitle}
+        processTitles={processTitles}
+        onEditProcessTitle={(pt) => { setProcessTitleToEdit(pt); setIsEditProcessTitleModalOpen(true); }}
+        onDeleteProcessTitle={(pt) => { setProcessTitleToDelete(pt); setIsDeleteProcessTitleModalOpen(true); }}
+      >
         <div className="flex flex-col md:flex-row flex-grow p-4 gap-4">
           {/* Tabs Container */}
           <div className="bg-white rounded-xl shadow-md p-4 w-full md:w-64 flex-shrink-0">
@@ -237,15 +416,34 @@ export default function Home() {
                 <p className="text-gray-500 italic">No process titles yet. Add one!</p>
               ) : (
                 processTitles.map(pt => (
-                  <button
-                    key={pt.id}
-                    className={`p-3 rounded-lg text-left font-semibold transition-colors duration-200 ${
-                      pt.id === activeProcessTitleId ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                    }`}
-                    onClick={() => setActiveProcessTitleId(pt.id)}
-                  >
-                    {pt.name}
-                  </button>
+                  <div key={pt.id} className="flex items-center group">
+                    <button
+                      className={`flex-grow p-3 rounded-lg text-left font-semibold transition-colors duration-200 ${
+                        pt.id === activeProcessTitleId ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                      }`}
+                      onClick={() => setActiveProcessTitleId(pt.id)}
+                    >
+                      {pt.name}
+                    </button>
+                    <button
+                      className={`ml-2 p-2 rounded-full text-gray-500 hover:bg-gray-200 ${pt.id === activeProcessTitleId ? 'text-white hover:bg-blue-700' : ''} opacity-0 group-hover:opacity-100 transition-opacity duration-200`}
+                      onClick={(e) => { e.stopPropagation(); setProcessTitleToEdit(pt); setIsEditProcessTitleModalOpen(true); }}
+                      title="Edit Process Title"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                        <path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.38-2.828-2.828z" />
+                      </svg>
+                    </button>
+                    <button
+                      className={`ml-1 p-2 rounded-full text-gray-500 hover:bg-red-200 ${pt.id === activeProcessTitleId ? 'text-white hover:bg-red-700' : ''} opacity-0 group-hover:opacity-100 transition-opacity duration-200`}
+                      onClick={(e) => { e.stopPropagation(); setProcessTitleToDelete(pt); setIsDeleteProcessTitleModalOpen(true); }}
+                      title="Delete Process Title"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                        <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+                      </svg>
+                    </button>
+                  </div>
                 ))
               )}
             </div>
@@ -264,12 +462,32 @@ export default function Home() {
                   (subProcesses[activeProcessTitleId] || []).map(sp => (
                     <li
                       key={sp.id}
-                      className={`p-2 mb-1 rounded-md cursor-pointer transition-colors duration-200 ${
+                      className={`p-2 mb-1 rounded-md cursor-pointer transition-colors duration-200 flex items-center justify-between group ${
                         selectedSubProcess?.id === sp.id ? 'bg-blue-100 border-blue-500 border font-semibold' : 'hover:bg-gray-50'
                       }`}
                       onClick={() => setSelectedSubProcess(sp)}
                     >
-                      {sp.name}
+                      <span className="flex-grow">{sp.name}</span>
+                      <div className="flex-shrink-0 flex items-center space-x-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+                        <button
+                          className="p-1 rounded-full text-gray-500 hover:bg-gray-200"
+                          onClick={(e) => { e.stopPropagation(); setSubProcessToEdit(sp); setIsEditSubProcessModalOpen(true); }}
+                          title="Edit Sub-process"
+                        >
+                          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                            <path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.38-2.828-2.828z" />
+                          </svg>
+                        </button>
+                        <button
+                          className="p-1 rounded-full text-gray-500 hover:bg-red-200"
+                          onClick={(e) => { e.stopPropagation(); setSubProcessToDelete(sp); setIsDeleteSubProcessModalOpen(true); }}
+                          title="Delete Sub-process"
+                        >
+                          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                            <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+                          </svg>
+                        </button>
+                      </div>
                     </li>
                   ))
                 )}
@@ -291,17 +509,369 @@ export default function Home() {
                 {selectedSubProcess ? `Attributes for: ${selectedSubProcess.name}` : 'Select a Sub-process'}
               </h3>
               {selectedSubProcess ? (
-                <AttributeForm subProcess={selectedSubProcess} onSave={handleUpdateSubProcess} />
+                <AttributeForm subProcess={selectedSubProcess} onSave={handleUpdateSubProcessAttributes} />
               ) : (
                 <p className="text-gray-500 italic">Click a sub-process to view and edit its attributes.</p>
               )}
             </div>
           </div>
         </div>
+
+        {/* Edit Process Title Modal */}
+        {isEditProcessTitleModalOpen && processTitleToEdit && (
+          <Modal
+            title="Edit Process Title"
+            onClose={() => { setIsEditProcessTitleModalOpen(false); setProcessTitleToEdit(null); }}
+            onConfirm={async (newName, newDependsOn) => {
+              await handleEditProcessTitle(processTitleToEdit.id, newName, newDependsOn);
+            }}
+            initialName={processTitleToEdit.name}
+            initialDependency={processTitleToEdit.dependsOn}
+            processTitles={processTitles} // Pass for dependency dropdown
+          />
+        )}
+
+        {/* Delete Process Title Confirmation Modal */}
+        {isDeleteProcessTitleModalOpen && processTitleToDelete && (
+          <ConfirmModal
+            title="Confirm Delete Process Title"
+            message={`Are you sure you want to delete "${processTitleToDelete.name}"? All its sub-processes will also be deleted.`}
+            onClose={() => { setIsDeleteProcessTitleModalOpen(false); setProcessTitleToDelete(null); }}
+            onConfirm={async () => await handleDeleteProcessTitle(processTitleToDelete.id)}
+          />
+        )}
+
+        {/* Edit Sub-process Modal */}
+        {isEditSubProcessModalOpen && subProcessToEdit && (
+          <Modal
+            title="Edit Sub-process"
+            onClose={() => { setIsEditSubProcessModalOpen(false); setSubProcessToEdit(null); }}
+            onConfirm={async (newName) => {
+              await handleEditSubProcess(subProcessToEdit.id, newName);
+            }}
+            initialName={subProcessToEdit.name}
+            isSubProcess={true} // Indicate it's a sub-process edit
+          />
+        )}
+
+        {/* Delete Sub-process Confirmation Modal */}
+        {isDeleteSubProcessModalOpen && subProcessToDelete && (
+          <ConfirmModal
+            title="Confirm Delete Sub-process"
+            message={`Are you sure you want to delete "${subProcessToDelete.name}"?`}
+            onClose={() => { setIsDeleteSubProcessModalOpen(false); setSubProcessToDelete(null); }}
+            onConfirm={async () => await handleDeleteSubProcess(subProcessToDelete.id)}
+          />
+        )}
       </Layout>
     </FirebaseContext.Provider>
   );
 }
+
+// // pages/index.js
+// import { useState, useEffect, useContext } from 'react';
+// import { initializeApp } from 'firebase/app';
+// import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
+// import { getFirestore, collection, doc, setDoc, onSnapshot, query } from 'firebase/firestore';
+// import Layout from '../components/Layout';
+// import AttributeForm from '../components/AttributeForm';
+// import FirebaseContext from '../lib/FirebaseContext'; // Import the centralized context
+
+// const firebaseConfig = {
+//   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
+//   authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
+//   projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
+//   storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
+//   messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
+//   appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
+// };
+
+// // Initialize Firebase (only once, safely)
+// let app;
+// let db;
+// let auth;
+
+// if (typeof window !== 'undefined' && firebaseConfig.projectId && !app) {
+//   try {
+//     app = initializeApp(firebaseConfig);
+//     db = getFirestore(app);
+//     auth = getAuth(app);
+//     console.log("Firebase initialized.");
+//   } catch (error) {
+//     console.error("Firebase initialization error:", error);
+//   }
+// } else if (typeof window !== 'undefined' && !firebaseConfig.projectId) {
+//   console.warn("Firebase config not found. Running in demo mode without persistence.");
+// }
+
+// export default function Home() {
+//   const [currentUserId, setCurrentUserId] = useState(null);
+//   const [loadingFirebase, setLoadingFirebase] = useState(true);
+//   const [loadingData, setLoadingData] = useState(true); // Keep true initially
+//   const [processTitles, setProcessTitles] = useState([]);
+//   const [subProcesses, setSubProcesses] = useState({});
+//   const [activeProcessTitleId, setActiveProcessTitleId] = useState(null);
+//   const [selectedSubProcess, setSelectedSubProcess] = useState(null);
+
+//   // --- Firebase Authentication Effect ---
+//   useEffect(() => {
+//     // If Firebase is not configured via .env.local, skip Firebase auth/data fetching
+//     if (!firebaseConfig.projectId) {
+//       setLoadingFirebase(false);
+//       // Set demo data immediately if not configured
+//       setProcessTitles([
+//         { id: "PT_BOOKING", name: "Booking", dependsOn: null },
+//         { id: "PT_CT_SIM", name: "CT SIM", dependsOn: "PT_BOOKING" }
+//       ]);
+//       setSubProcesses({
+//         "PT_BOOKING": [
+//           { id: "P_01", name: "Patient consults with RO", attributes: { role: ["RO"], output: ["eBAF (initial)"], description: "Initial consultation with Radiation Oncologist." } },
+//           { id: "P_02", name: "RO completes eBAF during consult", attributes: { role: ["RO"], input: ["eBAF (initial)"], output: ["eBAF (completed)"], system: ["Paper/Digital Form"] } },
+//           { id: "P_03", name: "Clerk books CT appt", attributes: { role: ["Clerk"], input: ["eBAF (completed)"], output: ["CT Appt (booked)"], system: ["Cerner"] } },
+//           { id: "P_04", name: "Enter CT SIM appt details into ARIA", attributes: { system: ["ARIA"], input: ["CT Appt (booked)"], document: ["CT SIM Appt Details"] } },
+//           { id: "P_05", name: "CT therapist reviews patient info from EBAF in Cerner", attributes: { role: ["CT Therapist"], system: ["Cerner"], input: ["eBAF (completed)"] } },
+//           { id: "P_06", name: "Patient CT SIM and 10 initial treatment appts. booked", attributes: { status: ["Completed"], output: ["Initial Treatment Schedule"] } },
+//         ],
+//         "PT_CT_SIM": [
+//           { id: "P_07", name: "CT therapist reviews next day CT schedule and EBAF in Cerner", attributes: { role: ["CT Therapist"], system: ["Cerner"], input: ["Next Day CT Schedule", "eBAF"] } },
+//           { id: "P_08", name: "Review patient demographics, RTT dates, disease codes, RO in ARIA", attributes: { system: ["ARIA"], role: ["CT Therapist", "RO"], input: ["Patient Demographics"] } },
+//           { id: "P_09", name: "Assign care path template in ARIA to patient", attributes: { system: ["ARIA"], output: ["Care Path Template"] } },
+//           { id: "P_10", name: "Enter patient info in RTP Dosimetry Tracking System", attributes: { system: ["RTP Dosimetry Tracking System"], input: ["Patient Info"] } },
+//           { id: "P_11", name: "Enter Patient info into CT Scanner Phillips System", attributes: { system: ["CT Scanner Phillips System"], input: ["Patient Info"] } },
+//           { id: "P_12", name: "Document the contrast provided as a journal note", attributes: { document: ["Journal Note (Contrast)"], role: ["CT Therapist"] } },
+//           { id: "P_13", name: "Booking clerk checks patient in for CT SIM", attributes: { role: ["Booking Clerk"], status: ["Patient Checked In"] } },
+//           { id: "P_14", name: "Complete CT checklist in ARIA", attributes: { system: ["ARIA"], document: ["CT Checklist"], role: ["CT Therapist"] } },
+//           { id: "P_15", name: "Scan patient", attributes: { equipment: ["CT Scanner"], output: ["CT Scan Images"] } },
+//           { id: "P_16", name: "Indicate set-up instructions in ARIA document", attributes: { system: ["ARIA"], document: ["Set-up Instructions"], role: ["CT Therapist"] } },
+//           { id: "P_17", name: "Save loc sheet as document in ARIA", attributes: { system: ["ARIA"], document: ["Loc Sheet"], role: ["CT Therapist"] } },
+//           { id: "P_18", name: "Document any journal notes in ARIA", attributes: { system: ["ARIA"], document: ["Journal Notes"], role: ["CT Therapist"] } },
+//           { id: "P_19", name: "Complete 'CT' appointment in ARIA", attributes: { system: ["ARIA"], status: ["CT Appt Completed"] } },
+//           { id: "P_20", name: "'Pre-RO' task in ARIA is initiated", attributes: { system: ["ARIA"], role: ["RO"] } },
+//           { id: "P_21", name: "Booking clerk schedules the remainder of treatment appts.", attributes: { role: ["Booking Clerk"], output: ["Full Treatment Schedule"] } },
+//         ]
+//       });
+//       setLoadingData(false);
+//       return; // Exit the effect if using demo data
+//     }
+
+//     // Only proceed with Firebase authentication if Firebase is configured
+//     if (!auth) {
+//       setLoadingFirebase(false);
+//       console.error("Firebase Auth instance is not available.");
+//       return;
+//     }
+
+//     const unsubscribe = onAuthStateChanged(auth, async (user) => {
+//       if (user) {
+//         setCurrentUserId(user.uid);
+//         console.log("Authenticated with user ID:", user.uid);
+//       } else {
+//         try {
+//           // Attempt anonymous sign-in if no user is found
+//           await signInAnonymously(auth);
+//         } catch (error) {
+//           console.error("Firebase authentication error:", error);
+//           // Handle specific errors like 'auth/network-request-failed' or 'auth/internal-error'
+//           // You might want to show a user-friendly message here
+//         }
+//       }
+//       setLoadingFirebase(false);
+//     });
+
+//     return () => unsubscribe(); // Cleanup subscription
+//   }, [auth, firebaseConfig.projectId]); // Depend on auth and projectId to re-run if they become available
+
+//   // --- Data Fetching Effects (Firestore) ---
+//   useEffect(() => {
+//     // Only proceed with Firestore data fetching if db and currentUserId are available
+//     // and Firebase is configured (not in demo mode)
+//     if (!db || !currentUserId || !firebaseConfig.projectId) {
+//       return;
+//     }
+
+//     setLoadingData(true);
+//     const processTitlesRef = collection(db, `artifacts/${firebaseConfig.appId}/users/${currentUserId}/processTitles`);
+//     const unsubscribeProcessTitles = onSnapshot(query(processTitlesRef), (snapshot) => {
+//       const fetchedTitles = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+//       fetchedTitles.sort((a, b) => a.name.localeCompare(b.name));
+//       setProcessTitles(fetchedTitles);
+//       setLoadingData(false);
+
+//       // If no active tab or active tab no longer exists, set the first one
+//       if (fetchedTitles.length > 0 && (!activeProcessTitleId || !fetchedTitles.some(t => t.id === activeProcessTitleId))) {
+//         setActiveProcessTitleId(fetchedTitles[0].id);
+//       } else if (fetchedTitles.length === 0) {
+//         setActiveProcessTitleId(null);
+//       }
+//     }, (error) => {
+//       console.error("Error fetching process titles:", error);
+//       setLoadingData(false);
+//     });
+
+//     return () => unsubscribeProcessTitles();
+//   }, [db, currentUserId, firebaseConfig.appId, activeProcessTitleId, firebaseConfig.projectId]);
+
+//   useEffect(() => {
+//     if (!db || !currentUserId || !activeProcessTitleId || !firebaseConfig.projectId) {
+//       setSubProcesses(prev => ({ ...prev, [activeProcessTitleId]: [] }));
+//       return;
+//     }
+
+//     setLoadingData(true);
+//     const subProcessesRef = collection(db, `artifacts/${firebaseConfig.appId}/users/${currentUserId}/processTitles/${activeProcessTitleId}/subProcesses`);
+//     const unsubscribeSubProcesses = onSnapshot(query(subProcessesRef), (snapshot) => {
+//       const fetchedSubProcesses = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+//       fetchedSubProcesses.sort((a, b) => a.name.localeCompare(b.name));
+//       setSubProcesses(prev => ({ ...prev, [activeProcessTitleId]: fetchedSubProcesses }));
+//       setLoadingData(false);
+
+//       // Deselect sub-process if it no longer exists in the current tab
+//       if (selectedSubProcess && !fetchedSubProcesses.some(sp => sp.id === selectedSubProcess.id)) {
+//         setSelectedSubProcess(null);
+//       }
+//     }, (error) => {
+//       console.error(`Error fetching sub-processes for ${activeProcessTitleId}:`, error);
+//       setLoadingData(false);
+//     });
+
+//     return () => unsubscribeSubProcesses();
+//   }, [db, currentUserId, activeProcessTitleId, selectedSubProcess, firebaseConfig.appId, firebaseConfig.projectId]);
+
+//   // --- Handlers ---
+//   const handleAddProcessTitle = async (name, dependsOn) => {
+//     if (!db || !currentUserId || !firebaseConfig.projectId) {
+//       alert("Database not ready. Please wait for authentication or configure Firebase.");
+//       return;
+//     }
+//     const newId = "PT_" + name.toUpperCase().replace(/[^A-Z0-9]/g, '_');
+//     if (processTitles.some(pt => pt.id === newId)) {
+//       alert("A process with a similar name already exists. Please choose a different name.");
+//       return;
+//     }
+//     try {
+//       await setDoc(doc(db, `artifacts/${firebaseConfig.appId}/users/${currentUserId}/processTitles`, newId), { name, dependsOn: dependsOn || null });
+//       console.log("Process title added:", name);
+//       setActiveProcessTitleId(newId); // Switch to new tab
+//     } catch (e) {
+//       console.error("Error adding process title: ", e);
+//       alert("Error saving process title.");
+//     }
+//   };
+
+//   const handleAddSubProcess = async (name) => {
+//     if (!db || !currentUserId || !activeProcessTitleId || !firebaseConfig.projectId) {
+//       alert("Please select a Process Title first or configure Firebase.");
+//       return;
+//     }
+//     const newId = `SP_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+//     try {
+//       await setDoc(doc(db, `artifacts/${firebaseConfig.appId}/users/${currentUserId}/processTitles/${activeProcessTitleId}/subProcesses`, newId), { name, attributes: {} });
+//       console.log("Sub-process added:", name);
+//     } catch (e) {
+//       console.error("Error adding sub-process: ", e);
+//       alert("Error saving sub-process.");
+//     }
+//   };
+
+//   const handleUpdateSubProcess = async (updatedSubProcess) => {
+//     if (!db || !currentUserId || !activeProcessTitleId || !updatedSubProcess || !firebaseConfig.projectId) {
+//       alert("Cannot save: Database not ready, no sub-process selected, or Firebase not configured.");
+//       return;
+//     }
+//     try {
+//       await setDoc(doc(db, `artifacts/${firebaseConfig.appId}/users/${currentUserId}/processTitles/${activeProcessTitleId}/subProcesses`, updatedSubProcess.id), {
+//         name: updatedSubProcess.name,
+//         attributes: updatedSubProcess.attributes
+//       });
+//       console.log("Sub-process updated:", updatedSubProcess.name);
+//       alert(`Changes for "${updatedSubProcess.name}" saved!`);
+//     } catch (e) {
+//       console.error("Error updating sub-process: ", e);
+//       alert("Error saving sub-process.");
+//     }
+//   };
+
+//   if (loadingFirebase) {
+//     return <Layout><div className="text-center py-8 text-gray-600">Initializing Firebase...</div></Layout>;
+//   }
+
+//   return (
+//     <FirebaseContext.Provider value={{ db, auth, currentUserId, firebaseAppId: firebaseConfig.appId }}>
+//       <Layout userId={currentUserId} onAddProcessTitle={handleAddProcessTitle} processTitles={processTitles}>
+//         <div className="flex flex-col md:flex-row flex-grow p-4 gap-4">
+//           {/* Tabs Container */}
+//           <div className="bg-white rounded-xl shadow-md p-4 w-full md:w-64 flex-shrink-0">
+//             <h2 className="text-xl font-bold mb-4 text-gray-800">Process Titles</h2>
+//             <div className="flex flex-col gap-2">
+//               {processTitles.length === 0 ? (
+//                 <p className="text-gray-500 italic">No process titles yet. Add one!</p>
+//               ) : (
+//                 processTitles.map(pt => (
+//                   <button
+//                     key={pt.id}
+//                     className={`p-3 rounded-lg text-left font-semibold transition-colors duration-200 ${
+//                       pt.id === activeProcessTitleId ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+//                     }`}
+//                     onClick={() => setActiveProcessTitleId(pt.id)}
+//                   >
+//                     {pt.name}
+//                   </button>
+//                 ))
+//               )}
+//             </div>
+//           </div>
+
+//           {/* Main Content Area (Sub-process List and Attribute Form) */}
+//           <div className="bg-white rounded-xl shadow-md flex-grow flex flex-col md:flex-row overflow-hidden">
+//             {/* Sub-process List */}
+//             <div className="w-full md:w-80 border-b md:border-b-0 md:border-r border-gray-200 p-4 flex flex-col">
+//               <h3 className="text-lg font-bold mb-3 text-gray-800">{processTitles.find(pt => pt.id === activeProcessTitleId)?.name || 'Select a Process'}</h3>
+//               {loadingData && <div className="text-center text-gray-500 text-sm">Loading sub-processes...</div>}
+//               <ul className="flex-grow overflow-y-auto mb-4">
+//                 {(subProcesses[activeProcessTitleId] || []).length === 0 && !loadingData ? (
+//                   <li className="text-gray-500 italic p-2">No sub-processes defined for this section.</li>
+//                 ) : (
+//                   (subProcesses[activeProcessTitleId] || []).map(sp => (
+//                     <li
+//                       key={sp.id}
+//                       className={`p-2 mb-1 rounded-md cursor-pointer transition-colors duration-200 ${
+//                         selectedSubProcess?.id === sp.id ? 'bg-blue-100 border-blue-500 border font-semibold' : 'hover:bg-gray-50'
+//                       }`}
+//                       onClick={() => setSelectedSubProcess(sp)}
+//                     >
+//                       {sp.name}
+//                     </li>
+//                   ))
+//                 )}
+//               </ul>
+//               <button
+//                 className="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded-lg transition-colors duration-200"
+//                 onClick={() => {
+//                   const subProcessName = prompt("Enter new sub-process name:");
+//                   if (subProcessName) handleAddSubProcess(subProcessName);
+//                 }}
+//               >
+//                 Add New Sub-process
+//               </button>
+//             </div>
+
+//             {/* Attribute Form */}
+//             <div className="flex-grow p-4 overflow-y-auto">
+//               <h3 className="text-lg font-bold mb-4 text-gray-800">
+//                 {selectedSubProcess ? `Attributes for: ${selectedSubProcess.name}` : 'Select a Sub-process'}
+//               </h3>
+//               {selectedSubProcess ? (
+//                 <AttributeForm subProcess={selectedSubProcess} onSave={handleUpdateSubProcess} />
+//               ) : (
+//                 <p className="text-gray-500 italic">Click a sub-process to view and edit its attributes.</p>
+//               )}
+//             </div>
+//           </div>
+//         </div>
+//       </Layout>
+//     </FirebaseContext.Provider>
+//   );
+// }
 
 
 
