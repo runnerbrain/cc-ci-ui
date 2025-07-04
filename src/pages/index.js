@@ -1,7 +1,7 @@
 // pages/index.js
 import { useState, useEffect, useContext, useCallback } from 'react';
 import { initializeApp } from 'firebase/app';
-import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
+import { getAuth, signInAnonymously, onAuthStateChanged, GoogleAuthProvider, signInWithPopup, signOut } from 'firebase/auth';
 import { getFirestore, collection, doc, setDoc, onSnapshot, query, deleteDoc, updateDoc, writeBatch, getDocs, collectionGroup } from 'firebase/firestore'; // Added collectionGroup
 import Layout from '../components/Layout';
 import AttributeForm from '../components/AttributeForm';
@@ -47,6 +47,7 @@ if (typeof window !== 'undefined' && firebaseConfig.projectId && !app) {
 
 export default function Home() {
   const [currentUserId, setCurrentUserId] = useState(null);
+  const [currentUser, setCurrentUser] = useState(null);
   const [loadingFirebase, setLoadingFirebase] = useState(true);
   const [loadingData, setLoadingData] = useState(true);
   const [processTitles, setProcessTitles] = useState([]);
@@ -71,6 +72,55 @@ export default function Home() {
   // Add state for add sub-process modal
   const [isAddSubProcessModalOpen, setIsAddSubProcessModalOpen] = useState(false);
   const [subProcessNameInput, setSubProcessNameInput] = useState("");
+
+  // Authentication functions
+  const signInWithGoogle = async () => {
+    if (!auth) {
+      console.error("Firebase Auth not available");
+      return;
+    }
+    try {
+      const provider = new GoogleAuthProvider();
+      const result = await signInWithPopup(auth, provider);
+      console.log("Google sign-in successful:", result.user.email);
+    } catch (error) {
+      console.error("Google sign-in error:", error);
+      alert("Google sign-in failed. Please try again or use anonymous sign-in.");
+    }
+  };
+
+  const signInAnonymously = async () => {
+    if (!auth) {
+      console.error("Firebase Auth not available");
+      return;
+    }
+    try {
+      await signInAnonymously(auth);
+      console.log("Anonymous sign-in successful");
+    } catch (error) {
+      console.error("Anonymous sign-in error:", error);
+      alert("Anonymous sign-in failed. Please try again.");
+    }
+  };
+
+  const handleSignOut = async () => {
+    if (!auth) {
+      console.error("Firebase Auth not available");
+      return;
+    }
+    try {
+      await signOut(auth);
+      console.log("Sign out successful");
+      // Clear local state
+      setCurrentUserId(null);
+      setCurrentUser(null);
+    } catch (error) {
+      console.error("Sign out error:", error);
+      // Even if signOut fails, clear local state to force re-authentication
+      setCurrentUserId(null);
+      setCurrentUser(null);
+    }
+  };
 
   // --- Firebase Authentication Effect ---
   useEffect(() => {
@@ -123,15 +173,16 @@ export default function Home() {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (user) {
         setCurrentUserId(user.uid);
+        setCurrentUser(user);
         console.log("Authenticated with user ID:", user.uid);
-      } else {
-        try {
-          // Attempt anonymous sign-in if no user is found
-          await signInAnonymously(auth);
-        } catch (error) {
-          console.error("Firebase authentication error:", error);
-          // You might want to show a user-friendly message here
+        if (user.providerData.length > 0) {
+          console.log("User signed in with:", user.providerData[0].providerId);
+        } else {
+          console.log("User signed in anonymously");
         }
+      } else {
+        // Don't automatically sign in anonymously - let user choose
+        console.log("No user signed in");
       }
       setLoadingFirebase(false);
     });
@@ -401,13 +452,73 @@ export default function Home() {
 
 
   if (loadingFirebase) {
-    return <Layout><div className="text-center py-8 text-gray-600">Initializing Firebase...</div></Layout>;
+    return <Layout currentUser={currentUser}><div className="text-center py-8 text-gray-600">Initializing Firebase...</div></Layout>;
+  }
+
+  // Show login prompt if not authenticated
+  if (!currentUser) {
+    return (
+      <Layout currentUser={currentUser}>
+        <div className="flex items-center justify-center min-h-screen bg-gray-50">
+          <div className="max-w-md w-full space-y-8 p-8">
+            <div className="text-center">
+              <h2 className="mt-6 text-3xl font-extrabold text-gray-900">
+                Welcome to Verspeeten CI Management
+              </h2>
+              <p className="mt-2 text-sm text-gray-600">
+                Please sign in to access your process management dashboard
+              </p>
+            </div>
+            <div className="mt-8 space-y-4">
+              <button
+                onClick={signInWithGoogle}
+                className="group relative w-full flex justify-center py-3 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors duration-200"
+              >
+                <svg className="w-5 h-5 mr-2" viewBox="0 0 24 24">
+                  <path fill="currentColor" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+                  <path fill="currentColor" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+                  <path fill="currentColor" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
+                  <path fill="currentColor" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+                </svg>
+                Sign in with Google
+              </button>
+              
+              <div className="relative">
+                <div className="absolute inset-0 flex items-center">
+                  <div className="w-full border-t border-gray-300" />
+                </div>
+                <div className="relative flex justify-center text-sm">
+                  <span className="px-2 bg-gray-50 text-gray-500">Or</span>
+                </div>
+              </div>
+              
+              <button
+                onClick={signInAnonymously}
+                className="w-full flex justify-center py-3 px-4 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors duration-200"
+              >
+                Continue as Guest
+              </button>
+            </div>
+          </div>
+        </div>
+      </Layout>
+    );
   }
 
   return (
-    <FirebaseContext.Provider value={{ db, auth, currentUserId, firebaseAppId: firebaseConfig.appId }}>
+    <FirebaseContext.Provider value={{ 
+      db, 
+      auth, 
+      currentUserId, 
+      currentUser,
+      signInWithGoogle,
+      signInAnonymously,
+      handleSignOut,
+      firebaseAppId: firebaseConfig.appId 
+    }}>
       <Layout
         userId={currentUserId}
+        currentUser={currentUser}
         onAddProcessTitle={handleAddProcessTitle}
         processTitles={processTitles}
         onEditProcessTitle={(pt) => { setProcessTitleToEdit(pt); setIsEditProcessTitleModalOpen(true); }}
