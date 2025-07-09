@@ -1,6 +1,7 @@
 // components/AttributeForm.js
 import { useState, useEffect, useContext } from 'react'; // Corrected this line
 import FirebaseContext from '../lib/FirebaseContext'; // Import the centralized context
+import styles from './AttributeForm.module.css'; // Import the styles module
 
 export default function AttributeForm({ subProcess, onSave }) {
   const [attributes, setAttributes] = useState({});
@@ -158,7 +159,7 @@ export default function AttributeForm({ subProcess, onSave }) {
           <div className="flex items-center justify-between">
             <div>
               <label className="block text-sm font-extrabold text-gray-700 mb-1">{key}</label>
-              <div className="text-base text-gray-800 bg-white px-2 py-1 rounded select-text" style={{ fontFamily: 'Noto Sans, monospace' }}>
+              <div className={`text-base text-gray-800 bg-white px-2 py-1 rounded select-text ${styles.attributeValueInter}`}>
                 {Array.isArray(value) ? value.join(', ') : value}
               </div>
             </div>

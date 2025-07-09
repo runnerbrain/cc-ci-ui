@@ -301,7 +301,7 @@ export default function Home() {
   };
 
   // --- Handlers for Sub-processes ---
-  const handleAddSubProcess = async (name) => {
+  const handleAddSubProcess = async (name, dependsOn) => {
     if (!db || !currentUserId || !activeProcessTitleId || !firebaseConfig.projectId) {
       alert("Please select a Process Title first or configure Firebase.");
       return;
@@ -315,7 +315,7 @@ export default function Home() {
 
     const newId = `SP_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
     try {
-      await setDoc(doc(db, `artifacts/${firebaseConfig.appId}/users/${currentUserId}/processTitles/${activeProcessTitleId}/subProcesses`, newId), { name, attributes: {} });
+      await setDoc(doc(db, `artifacts/${firebaseConfig.appId}/users/${currentUserId}/processTitles/${activeProcessTitleId}/subProcesses`, newId), { name, attributes: {}, dependsOn: dependsOn || null });
       console.log("Sub-process added:", name);
     } catch (e) {
       console.error("Error adding sub-process: ", e);
@@ -604,13 +604,14 @@ export default function Home() {
           <Modal
             title="Add Sub-process"
             onClose={() => { setIsAddSubProcessModalOpen(false); setSubProcessNameInput(""); }}
-            onConfirm={async (name) => {
-              await handleAddSubProcess(name);
+            onConfirm={async (name, dependsOn) => {
+              await handleAddSubProcess(name, dependsOn);
               setIsAddSubProcessModalOpen(false);
               setSubProcessNameInput("");
             }}
             initialName={subProcessNameInput}
             isSubProcess={true}
+            subProcesses={(subProcesses[activeProcessTitleId] || [])}
           />
         )}
       </Layout>

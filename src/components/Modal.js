@@ -1,7 +1,7 @@
 // components/Modal.js
 import { useState, useEffect } from 'react';
 
-export function Modal({ title, onClose, onConfirm, initialName = '', initialDependency = '', processTitles = [], isSubProcess = false }) {
+export function Modal({ title, onClose, onConfirm, initialName = '', initialDependency = '', processTitles = [], subProcesses = [], isSubProcess = false }) {
   const [name, setName] = useState(initialName);
   const [dependency, setDependency] = useState(initialDependency);
 
@@ -16,7 +16,7 @@ export function Modal({ title, onClose, onConfirm, initialName = '', initialDepe
       return;
     }
     if (isSubProcess) {
-      onConfirm(name); // Only name for sub-process
+      onConfirm(name, dependency); // Pass dependency for sub-process
     } else {
       onConfirm(name, dependency); // Name and dependency for process title
     }
@@ -44,7 +44,8 @@ export function Modal({ title, onClose, onConfirm, initialName = '', initialDepe
           onChange={(e) => setName(e.target.value)}
         />
 
-        {!isSubProcess && ( // Only show dependency for process titles
+        {/* Dependency dropdown for process titles and sub-processes */}
+        {(!isSubProcess && processTitles.length > 0) && (
           <>
             <label htmlFor="dependency-select" className="block text-sm font-medium text-gray-700 mb-1">Depends on (Optional):</label>
             <select
@@ -56,6 +57,23 @@ export function Modal({ title, onClose, onConfirm, initialName = '', initialDepe
               <option value="">-- No Dependency --</option>
               {processTitles.map(pt => (
                 <option key={pt.id} value={pt.id}>{pt.name}</option>
+              ))}
+            </select>
+          </>
+        )}
+        {(isSubProcess) && (
+          <>
+            <label htmlFor="subprocess-dependency-select" className="block text-sm font-medium text-gray-700 mb-1">Depends on (Optional):</label>
+            <select
+              id="subprocess-dependency-select"
+              className="w-full p-2 border border-gray-300 rounded-md bg-white mb-4"
+              value={dependency}
+              onChange={(e) => setDependency(e.target.value)}
+              disabled={subProcesses.length === 0}
+            >
+              <option value="">-- No Dependency --</option>
+              {subProcesses.map(sp => (
+                <option key={sp.id} value={sp.id}>{sp.name}</option>
               ))}
             </select>
           </>
