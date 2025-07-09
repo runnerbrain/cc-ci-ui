@@ -7,6 +7,8 @@ export default function AttributeForm({ subProcess, onSave }) {
   const [attributes, setAttributes] = useState({});
   const [newAttributeKey, setNewAttributeKey] = useState('');
   const [newAttributeValue, setNewAttributeValue] = useState('');
+  const [newAttributeType, setNewAttributeType] = useState('string'); // NEW: type state
+  const [objectFields, setObjectFields] = useState([{ key: '', value: '' }]); // For object type
   const [editKey, setEditKey] = useState(null);
   const [editOriginalKey, setEditOriginalKey] = useState(null);
 
@@ -23,6 +25,13 @@ export default function AttributeForm({ subProcess, onSave }) {
       setAttributes(JSON.parse(JSON.stringify(subProcess.attributes || {})));
     }
   }, [subProcess]);
+
+  // Reset objectFields when type changes
+  useEffect(() => {
+    if (newAttributeType === 'object') {
+      setObjectFields([{ key: '', value: '' }]);
+    }
+  }, [newAttributeType]);
 
   const persistAttributes = (updatedAttributes) => {
     setAttributes(updatedAttributes);
@@ -84,8 +93,17 @@ export default function AttributeForm({ subProcess, onSave }) {
     setEditKey(key);
     setEditOriginalKey(key);
     setNewAttributeKey(key);
-    const value = attributes[key];
-    setNewAttributeValue(Array.isArray(value) ? value.join(', ') : value);
+    const attr = attributes[key];
+    if (attr && typeof attr === 'object' && attr.type) {
+      setNewAttributeType(attr.type);
+      setNewAttributeValue(attr.value);
+      if (attr.type === 'object' && attr.value && typeof attr.value === 'object' && !Array.isArray(attr.value)) {
+        setObjectFields(Object.entries(attr.value).map(([k, v]) => ({ key: k, value: v })));
+      }
+    } else {
+      setNewAttributeType('string');
+      setNewAttributeValue(Array.isArray(attr) ? attr.join(', ') : attr);
+    }
   };
 
   const handleAddOrEditAttribute = () => {
@@ -94,9 +112,28 @@ export default function AttributeForm({ subProcess, onSave }) {
       return;
     }
     let newAttrs = { ...attributes };
-    const value = newAttributeValue.trim();
+    let value = newAttributeValue;
+    // Basic conversion for number and boolean
+    if (newAttributeType === 'number') {
+      value = Number(newAttributeValue);
+      if (isNaN(value)) {
+        alert('Please enter a valid number.');
+        return;
+      }
+    } else if (newAttributeType === 'boolean') {
+      value = newAttributeValue === 'true' || newAttributeValue === true;
+    } else if (newAttributeType === 'object') {
+      // Convert objectFields to object
+      const obj = {};
+      for (const pair of objectFields) {
+        if (pair.key.trim() !== '') {
+          obj[pair.key.trim()] = pair.value;
+        }
+      }
+      value = obj;
+    }
+    const attrObj = { type: newAttributeType, value };
     if (editKey) {
-      // Editing: remove old key if changed
       if (editOriginalKey !== newAttributeKey.trim()) {
         delete newAttrs[editOriginalKey];
       }
@@ -104,10 +141,12 @@ export default function AttributeForm({ subProcess, onSave }) {
       alert(`Attribute \"${newAttributeKey.trim()}\" already exists.`);
       return;
     }
-    newAttrs[newAttributeKey.trim()] = value.includes(',') ? value.split(',').map(v => v.trim()) : value;
+    newAttrs[newAttributeKey.trim()] = attrObj;
     persistAttributes(newAttrs);
     setNewAttributeKey('');
     setNewAttributeValue('');
+    setObjectFields([{ key: '', value: '' }]);
+    setNewAttributeType('string');
     setEditKey(null);
     setEditOriginalKey(null);
   };
@@ -124,13 +163,90 @@ export default function AttributeForm({ subProcess, onSave }) {
           className="w-full p-2 border border-gray-300 rounded-md"
           disabled={!!editKey}
         />
-        <input
-          type="text"
-          placeholder="Attribute Value (comma-separated for multiple)"
-          value={newAttributeValue}
-          onChange={(e) => setNewAttributeValue(e.target.value)}
-          className="w-full p-2 border border-gray-300 rounded-md"
-        />
+        {/* Flex row for type and value */}
+        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+          <select
+            value={newAttributeType}
+            onChange={e => setNewAttributeType(e.target.value)}
+            className="p-2 border border-gray-300 rounded-md"
+            style={{ minWidth: 110, flex: '0 0 auto' }}
+          >
+            <option value="string">String</option>
+            <option value="number">Number</option>
+            <option value="boolean">Boolean</option>
+            <option value="object">Object</option>
+            <option value="array">Array</option>
+          </select>
+          {/* Value input (object type gets a subform) */}
+          {newAttributeType === 'object' ? (
+            <div style={{ flex: 1 }}>
+              {objectFields.map((pair, idx) => (
+                <div key={idx} style={{ display: 'flex', gap: '0.25rem', marginBottom: 4 }}>
+                  <input
+                    type="text"
+                    placeholder="Key"
+                    value={pair.key}
+                    onChange={e => {
+                      const updated = [...objectFields];
+                      updated[idx].key = e.target.value;
+                      setObjectFields(updated);
+                    }}
+                    className="p-1 border border-gray-300 rounded-md"
+                    style={{ width: '40%' }}
+                  />
+                  <input
+                    type="text"
+                    placeholder="Value"
+                    value={pair.value}
+                    onChange={e => {
+                      const updated = [...objectFields];
+                      updated[idx].value = e.target.value;
+                      setObjectFields(updated);
+                    }}
+                    className="p-1 border border-gray-300 rounded-md"
+                    style={{ width: '50%' }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setObjectFields(fields => fields.filter((_, i) => i !== idx))}
+                    className="bg-red-200 hover:bg-red-400 text-red-800 rounded px-2"
+                    style={{ height: 32 }}
+                    title="Remove"
+                  >
+                    ×
+                  </button>
+                </div>
+              ))}
+              <button
+                type="button"
+                onClick={() => setObjectFields(fields => [...fields, { key: '', value: '' }])}
+                className="bg-blue-200 hover:bg-blue-400 text-blue-800 rounded px-2 mt-1"
+                style={{ fontSize: 14 }}
+              >
+                + Add Pair
+              </button>
+            </div>
+          ) : newAttributeType === 'boolean' ? (
+            <select
+              value={String(newAttributeValue)}
+              onChange={e => setNewAttributeValue(e.target.value === 'true')}
+              className="p-2 border border-gray-300 rounded-md"
+              style={{ flex: 1 }}
+            >
+              <option value="true">True</option>
+              <option value="false">False</option>
+            </select>
+          ) : (
+            <input
+              type={newAttributeType === 'number' ? 'number' : 'text'}
+              placeholder="Attribute Value"
+              value={newAttributeValue}
+              onChange={(e) => setNewAttributeValue(e.target.value)}
+              className="p-2 border border-gray-300 rounded-md"
+              style={{ flex: 1 }}
+            />
+          )}
+        </div>
         <button
           onClick={handleAddOrEditAttribute}
           className="w-full bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded-lg transition-colors duration-200"
@@ -154,13 +270,43 @@ export default function AttributeForm({ subProcess, onSave }) {
       {Object.keys(attributes).length === 0 && (
         <p className="text-gray-500 italic mb-4">No attributes defined. Add one above!</p>
       )}
-      {Object.entries(attributes).map(([key, value]) => (
+      {Object.entries(attributes).map(([key, attr]) => (
         <div key={key} className="relative group mb-4 p-3 bg-gray-100 rounded-lg">
           <div className="flex items-center justify-between">
             <div>
               <label className="block text-sm font-extrabold text-gray-700 mb-1">{key}</label>
               <div className={`text-base text-gray-800 bg-white px-2 py-1 rounded select-text ${styles.attributeValueInter}`}>
-                {Array.isArray(value) ? value.join(', ') : value}
+                {/* Display logic by type */}
+                {attr && typeof attr === 'object' && attr.type ? (
+                  attr.type === 'boolean' ? (
+                    attr.value ? 'True' : 'False'
+                  ) : attr.type === 'object' && attr.value && typeof attr.value === 'object' && !Array.isArray(attr.value) ? (
+                    <ul style={{ margin: 0, padding: 0, listStyle: 'none' }}>
+                      {Object.entries(attr.value).map(([k, v]) => (
+                        <li key={k}><span className="font-semibold">{k}:</span> {String(v)}</li>
+                      ))}
+                    </ul>
+                  ) : attr.type === 'array' && Array.isArray(attr.value) ? (
+                    attr.value.length > 0 && typeof attr.value[0] === 'object' ? (
+                      <ul style={{ margin: 0, padding: 0, listStyle: 'none' }}>
+                        {attr.value.map((obj, idx) => (
+                          <li key={idx}>
+                            {Object.entries(obj).map(([k, v]) => (
+                              <span key={k}><span className="font-semibold">{k}:</span> {String(v)}; </span>
+                            ))}
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      attr.value.join(', ')
+                    )
+                  ) : (
+                    String(attr.value)
+                  )
+                ) : (
+                  // fallback for legacy/simple values
+                  Array.isArray(attr) ? attr.join(', ') : String(attr)
+                )}
               </div>
             </div>
             <div className="flex items-center space-x-2 ml-4">
