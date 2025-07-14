@@ -3,7 +3,7 @@ import Head from 'next/head';
 import { useState, useContext } from 'react';
 import FirebaseContext from '../lib/FirebaseContext'; // Import the centralized context
 
-export default function Layout({ children, userId, onAddProcessTitle, processTitles }) {
+export default function Layout({ children, user, onAddProcessTitle, processTitles, onLogout }) {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [newProcessName, setNewProcessName] = useState('');
   const [processDependency, setProcessDependency] = useState('');
@@ -31,13 +31,19 @@ export default function Layout({ children, userId, onAddProcessTitle, processTit
       <header className="bg-gray-900 text-white p-4 shadow-md flex justify-between items-center">
         <h1 className="text-2xl font-bold">Verspeeten CI Management</h1>
         <div className="flex items-center space-x-4">
-          <span className="text-sm text-gray-300">User ID: {userId || 'N/A'}</span>
-          <button
-            className="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded-lg transition-colors duration-200"
-            onClick={() => setIsModalOpen(true)}
-          >
-            Add New Process Title
-          </button>
+          <span className="text-sm text-gray-300">
+            {user?.email ? `User: ${user.email}` : user?.uid ? `User ID: ${user.uid}` : 'Guest'}
+          </span>
+          {user && (user.email || user.uid) && (
+            <>
+              <button
+                className="bg-red-500 hover:bg-red-600 text-white font-bold py-2 px-4 rounded-lg transition-colors duration-200"
+                onClick={onLogout}
+              >
+                Logout
+              </button>
+            </>
+          )}
         </div>
       </header>
 

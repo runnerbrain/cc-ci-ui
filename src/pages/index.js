@@ -1,52 +1,21 @@
 // pages/index.js
 import { useState, useEffect, useContext, useCallback } from 'react';
-import { initializeApp } from 'firebase/app';
-import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
+import { getAuth, signInAnonymously, onAuthStateChanged, signOut } from 'firebase/auth';
 import { getFirestore, collection, doc, setDoc, onSnapshot, query, deleteDoc, updateDoc, writeBatch, getDocs, collectionGroup } from 'firebase/firestore'; // Added collectionGroup
 import Layout from '../components/Layout';
 import AttributeForm from '../components/AttributeForm';
 import { Modal } from '../components/Modal'; // Import Modal
 import { ConfirmModal } from '../components/ConfirmModal'; // Import ConfirmModal
-import FirebaseContext from '../lib/FirebaseContext'; // Import the centralized context
-
-// --- Firebase Configuration (REPLACE WITH YOUR OWN) ---
-// You will get this from your Firebase project settings after creating it.
-// For local development, create a .env.local file in your project root and add these:
-// NEXT_PUBLIC_FIREBASE_API_KEY=YOUR_API_KEY
-// NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=YOUR_AUTH_DOMAIN
-// NEXT_PUBLIC_FIREBASE_PROJECT_ID=YOUR_PROJECT_ID
-// NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=YOUR_STORAGE_BUCKET
-// NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=YOUR_MESSAGING_SENDER_ID
-// NEXT_PUBLIC_FIREBASE_APP_ID=YOUR_APP_ID
-const firebaseConfig = {
-  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
-  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
-  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
-  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
-  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
-};
-
-// Initialize Firebase (only once, safely)
-let app;
-let db;
-let auth;
-
-if (typeof window !== 'undefined' && firebaseConfig.projectId && !app) {
-  try {
-    app = initializeApp(firebaseConfig);
-    db = getFirestore(app);
-    auth = getAuth(app);
-    console.log("Firebase initialized.");
-  } catch (error) {
-    console.error("Firebase initialization error:", error);
-  }
-} else if (typeof window !== 'undefined' && !firebaseConfig.projectId) {
-  console.warn("Firebase config not found. Running in demo mode without persistence.");
-}
+import { FirebaseContext } from '../lib/FirebaseContext'; // Import the centralized context
+import { useRouter } from 'next/router';
 
 export default function Home() {
-  const [currentUserId, setCurrentUserId] = useState(null);
+  const firebaseApp = useContext(FirebaseContext);
+  const db = firebaseApp ? getFirestore(firebaseApp) : null;
+  const auth = firebaseApp ? getAuth(firebaseApp) : null;
+  const router = useRouter();
+
+  const [currentUser, setCurrentUser] = useState(null);
   const [loadingFirebase, setLoadingFirebase] = useState(true);
   const [loadingData, setLoadingData] = useState(true);
   const [processTitles, setProcessTitles] = useState([]);
@@ -75,7 +44,7 @@ export default function Home() {
   // --- Firebase Authentication Effect ---
   useEffect(() => {
     // If Firebase is NOT configured via .env.local, skip Firebase auth/data fetching
-    if (!firebaseConfig.projectId) {
+    if (!firebaseApp) {
       setLoadingFirebase(false);
       // Set demo data immediately if not configured
       setProcessTitles([
@@ -122,29 +91,29 @@ export default function Home() {
 
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (user) {
-        setCurrentUserId(user.uid);
-        console.log("Authenticated with user ID:", user.uid);
+        setCurrentUser({ email: user.email, uid: user.uid });
+        console.log("Authenticated with user:", user.email || user.uid);
       } else {
+        setCurrentUser(null);
         try {
           // Attempt anonymous sign-in if no user is found
           await signInAnonymously(auth);
         } catch (error) {
           console.error("Firebase authentication error:", error);
-          // You might want to show a user-friendly message here
         }
       }
       setLoadingFirebase(false);
     });
 
     return () => unsubscribe(); // Cleanup subscription
-  }, [auth, firebaseConfig.projectId]); // Depend on auth and projectId to re-run if they become available
+  }, [auth, firebaseApp]); // Depend on auth and projectId to re-run if they become available
 
   // --- Data Fetching Effects (Firestore) ---
   // Effect to fetch ALL Process Titles from ALL users using a Collection Group Query
   useEffect(() => {
     // Only proceed with Firestore data fetching if db and currentUserId are available
     // and Firebase is configured (not in demo mode)
-    if (!db || !currentUserId || !firebaseConfig.projectId) {
+    if (!db || !currentUser?.uid) {
       return;
     }
 
@@ -172,11 +141,11 @@ export default function Home() {
     });
 
     return () => unsubscribeProcessTitles();
-  }, [db, currentUserId, firebaseConfig.appId, activeProcessTitleId, firebaseConfig.projectId]);
+  }, [db, currentUser?.uid, activeProcessTitleId]);
 
   // Effect to fetch Sub-processes for the active tab (now needs to know the owner's userId)
   useEffect(() => {
-    if (!db || !currentUserId || !activeProcessTitleId || !firebaseConfig.projectId) {
+    if (!db || !currentUser?.uid || !activeProcessTitleId) {
       setSubProcesses(prev => ({ ...prev, [activeProcessTitleId]: [] })); // Clear sub-processes for current tab if conditions not met
       return;
     }
@@ -195,7 +164,7 @@ export default function Home() {
         return;
     }
 
-    const subProcessesRef = collection(db, `artifacts/${firebaseConfig.appId}/users/${processTitleOwnerUserId}/processTitles/${activeProcessTitleId}/subProcesses`);
+    const subProcessesRef = collection(db, `artifacts/${firebaseApp.options.appId}/users/${processTitleOwnerUserId}/processTitles/${activeProcessTitleId}/subProcesses`);
     const unsubscribeSubProcesses = onSnapshot(query(subProcessesRef), (snapshot) => {
       const fetchedSubProcesses = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       fetchedSubProcesses.sort((a, b) => a.name.localeCompare(b.name));
@@ -213,11 +182,11 @@ export default function Home() {
     });
 
     return () => unsubscribeSubProcesses();
-  }, [db, currentUserId, activeProcessTitleId, selectedSubProcess, firebaseConfig.appId, firebaseConfig.projectId, processTitles]); // Added processTitles to dependencies
+  }, [db, currentUser?.uid, activeProcessTitleId, selectedSubProcess, firebaseApp.options.appId, processTitles]); // Added processTitles to dependencies
 
   // --- Handlers for Process Titles ---
   const handleAddProcessTitle = async (name, dependsOn) => {
-    if (!db || !currentUserId || !firebaseConfig.projectId) {
+    if (!db || !currentUser?.uid) {
       alert("Database not ready. Please wait for authentication or configure Firebase.");
       return;
     }
@@ -228,7 +197,7 @@ export default function Home() {
     }
     try {
       // Save new process title under the CURRENT user's ID
-      await setDoc(doc(db, `artifacts/${firebaseConfig.appId}/users/${currentUserId}/processTitles`, newId), { name, dependsOn: dependsOn || null });
+      await setDoc(doc(db, `artifacts/${firebaseApp.options.appId}/users/${currentUser?.uid}/processTitles`, newId), { name, dependsOn: dependsOn || null });
       console.log("Process title added:", name);
       // setActiveProcessTitleId(newId); // This will be handled by the onSnapshot listener
     } catch (e) {
@@ -238,18 +207,18 @@ export default function Home() {
   };
 
   const handleEditProcessTitle = async (id, newName, newDependsOn) => {
-    if (!db || !currentUserId || !firebaseConfig.projectId) {
+    if (!db || !currentUser?.uid) {
       alert("Database not ready. Please wait for authentication or configure Firebase.");
       return;
     }
     // Find the userId owner of this process title
     const processTitleOwnerUserId = processTitles.find(pt => pt.id === id)?.userId;
-    if (!processTitleOwnerUserId || processTitleOwnerUserId !== currentUserId) {
+    if (!processTitleOwnerUserId || processTitleOwnerUserId !== currentUser?.uid) {
         alert("You can only edit process titles you created.");
         return;
     }
     try {
-      await updateDoc(doc(db, `artifacts/${firebaseConfig.appId}/users/${currentUserId}/processTitles`, id), {
+      await updateDoc(doc(db, `artifacts/${firebaseApp.options.appId}/users/${currentUser?.uid}/processTitles`, id), {
         name: newName,
         dependsOn: newDependsOn || null
       });
@@ -264,19 +233,19 @@ export default function Home() {
   };
 
   const handleDeleteProcessTitle = async (id) => {
-    if (!db || !currentUserId || !firebaseConfig.projectId) {
+    if (!db || !currentUser?.uid) {
       alert("Database not ready. Please wait for authentication or configure Firebase.");
       return;
     }
     // Find the userId owner of this process title
     const processTitleOwnerUserId = processTitles.find(pt => pt.id === id)?.userId;
-    if (!processTitleOwnerUserId || processTitleOwnerUserId !== currentUserId) {
+    if (!processTitleOwnerUserId || processTitleOwnerUserId !== currentUser?.uid) {
         alert("You can only delete process titles you created.");
         return;
     }
     try {
       // Delete all sub-processes first (more complex, requires fetching them)
-      const subProcessesCollectionRef = collection(db, `artifacts/${firebaseConfig.appId}/users/${currentUserId}/processTitles/${id}/subProcesses`);
+      const subProcessesCollectionRef = collection(db, `artifacts/${firebaseApp.options.appId}/users/${currentUser?.uid}/processTitles/${id}/subProcesses`);
       const subProcessDocs = await getDocs(query(subProcessesCollectionRef));
       const batch = writeBatch(db);
       subProcessDocs.forEach((subDoc) => {
@@ -285,7 +254,7 @@ export default function Home() {
       await batch.commit();
 
       // Then delete the process title document itself
-      await deleteDoc(doc(db, `artifacts/${firebaseConfig.appId}/users/${currentUserId}/processTitles`, id));
+      await deleteDoc(doc(db, `artifacts/${firebaseApp.options.appId}/users/${currentUser?.uid}/processTitles`, id));
       console.log(`Process title ${id} and its sub-processes deleted.`);
       // If the deleted tab was active, switch to the first available tab
       if (activeProcessTitleId === id) {
@@ -302,20 +271,20 @@ export default function Home() {
 
   // --- Handlers for Sub-processes ---
   const handleAddSubProcess = async (name, dependsOn) => {
-    if (!db || !currentUserId || !activeProcessTitleId || !firebaseConfig.projectId) {
+    if (!db || !currentUser?.uid || !activeProcessTitleId) {
       alert("Please select a Process Title first or configure Firebase.");
       return;
     }
     // Ensure sub-process is added under the owner of the active process title
     const processTitleOwnerUserId = processTitles.find(pt => pt.id === activeProcessTitleId)?.userId;
-    if (!processTitleOwnerUserId || processTitleOwnerUserId !== currentUserId) {
+    if (!processTitleOwnerUserId || processTitleOwnerUserId !== currentUser?.uid) {
         alert("You can only add sub-processes to process titles you created.");
         return;
     }
 
     const newId = `SP_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
     try {
-      await setDoc(doc(db, `artifacts/${firebaseConfig.appId}/users/${currentUserId}/processTitles/${activeProcessTitleId}/subProcesses`, newId), { name, attributes: {}, dependsOn: dependsOn || null });
+      await setDoc(doc(db, `artifacts/${firebaseApp.options.appId}/users/${currentUser?.uid}/processTitles/${activeProcessTitleId}/subProcesses`, newId), { name, attributes: {}, dependsOn: dependsOn || null });
       console.log("Sub-process added:", name);
     } catch (e) {
       console.error("Error adding sub-process: ", e);
@@ -324,18 +293,18 @@ export default function Home() {
   };
 
   const handleEditSubProcess = async (id, newName) => {
-    if (!db || !currentUserId || !activeProcessTitleId || !firebaseConfig.projectId) {
+    if (!db || !currentUser?.uid || !activeProcessTitleId) {
       alert("Database not ready. Please wait for authentication or configure Firebase.");
       return;
     }
     // Ensure sub-process is edited under the owner of its parent process title
     const processTitleOwnerUserId = processTitles.find(pt => pt.id === activeProcessTitleId)?.userId;
-    if (!processTitleOwnerUserId || processTitleOwnerUserId !== currentUserId) {
+    if (!processTitleOwnerUserId || processTitleOwnerUserId !== currentUser?.uid) {
         alert("You can only edit sub-processes of process titles you created.");
         return;
     }
     try {
-      await updateDoc(doc(db, `artifacts/${firebaseConfig.appId}/users/${currentUserId}/processTitles/${activeProcessTitleId}/subProcesses`, id), {
+      await updateDoc(doc(db, `artifacts/${firebaseApp.options.appId}/users/${currentUser?.uid}/processTitles/${activeProcessTitleId}/subProcesses`, id), {
         name: newName
       });
       console.log(`Sub-process ${newName} updated.`);
@@ -349,18 +318,18 @@ export default function Home() {
   };
 
   const handleDeleteSubProcess = async (id) => {
-    if (!db || !currentUserId || !activeProcessTitleId || !firebaseConfig.projectId) {
+    if (!db || !currentUser?.uid || !activeProcessTitleId) {
       alert("Database not ready. Please wait for authentication or configure Firebase.");
       return;
     }
     // Ensure sub-process is deleted under the owner of its parent process title
     const processTitleOwnerUserId = processTitles.find(pt => pt.id === activeProcessTitleId)?.userId;
-    if (!processTitleOwnerUserId || processTitleOwnerUserId !== currentUserId) {
+    if (!processTitleOwnerUserId || processTitleOwnerUserId !== currentUser?.uid) {
         alert("You can only delete sub-processes of process titles you created.");
         return;
     }
     try {
-      await deleteDoc(doc(db, `artifacts/${firebaseConfig.appId}/users/${currentUserId}/processTitles/${activeProcessTitleId}/subProcesses`, id));
+      await deleteDoc(doc(db, `artifacts/${firebaseApp.options.appId}/users/${currentUser?.uid}/processTitles/${activeProcessTitleId}/subProcesses`, id));
       console.log(`Sub-process ${id} deleted.`);
       // If the deleted sub-process was selected, deselect it
       if (selectedSubProcess && selectedSubProcess.id === id) {
@@ -376,18 +345,18 @@ export default function Home() {
   };
 
   const handleUpdateSubProcessAttributes = useCallback(async (updatedSubProcess) => {
-    if (!db || !currentUserId || !activeProcessTitleId || !updatedSubProcess || !firebaseConfig.projectId) {
+    if (!db || !currentUser?.uid || !activeProcessTitleId || !updatedSubProcess) {
       alert("Cannot save: Database not ready, no sub-process selected, or Firebase not configured.");
       return;
     }
     // Ensure attributes are updated under the owner of its parent process title
     const processTitleOwnerUserId = processTitles.find(pt => pt.id === activeProcessTitleId)?.userId;
-    if (!processTitleOwnerUserId || processTitleOwnerUserId !== currentUserId) {
+    if (!processTitleOwnerUserId || processTitleOwnerUserId !== currentUser?.uid) {
         alert("You can only update attributes of sub-processes you created.");
         return;
     }
     try {
-      await setDoc(doc(db, `artifacts/${firebaseConfig.appId}/users/${currentUserId}/processTitles/${activeProcessTitleId}/subProcesses`, updatedSubProcess.id), {
+      await setDoc(doc(db, `artifacts/${firebaseApp.options.appId}/users/${currentUser?.uid}/processTitles/${activeProcessTitleId}/subProcesses`, updatedSubProcess.id), {
         name: updatedSubProcess.name, // Ensure name is also saved if it was passed in the updated object
         attributes: JSON.parse(JSON.stringify(updatedSubProcess.attributes)) // Deep copy to ensure no mutation issues
       });
@@ -397,21 +366,29 @@ export default function Home() {
       console.error("Error updating sub-process attributes: ", e);
       alert("Error saving sub-process attributes.");
     }
-  }, [db, currentUserId, activeProcessTitleId, firebaseConfig.appId, firebaseConfig.projectId, processTitles]);
+  }, [db, currentUser?.uid, activeProcessTitleId, firebaseApp.options.appId, processTitles]);
 
+  const handleLogout = async () => {
+    if (auth) {
+      await signOut(auth);
+      setCurrentUser(null);
+      router.push('/login');
+    }
+  };
 
   if (loadingFirebase) {
     return <Layout><div className="text-center py-8 text-gray-600">Initializing Firebase...</div></Layout>;
   }
 
   return (
-    <FirebaseContext.Provider value={{ db, auth, currentUserId, firebaseAppId: firebaseConfig.appId }}>
+    <FirebaseContext.Provider value={{ db, auth, currentUser, firebaseApp }}>
       <Layout
-        userId={currentUserId}
+        user={currentUser}
         onAddProcessTitle={handleAddProcessTitle}
         processTitles={processTitles}
         onEditProcessTitle={(pt) => { setProcessTitleToEdit(pt); setIsEditProcessTitleModalOpen(true); }}
         onDeleteProcessTitle={(pt) => { setProcessTitleToDelete(pt); setIsDeleteProcessTitleModalOpen(true); }}
+        onLogout={handleLogout}
       >
         <div className="flex flex-col md:flex-row flex-grow p-4 gap-4">
           {/* Tabs Container */}

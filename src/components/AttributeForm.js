@@ -1,7 +1,71 @@
 // components/AttributeForm.js
-import { useState, useEffect, useContext } from 'react'; // Corrected this line
+import { useState, useEffect, useContext, useRef } from 'react'; // Corrected this line
 import FirebaseContext from '../lib/FirebaseContext'; // Import the centralized context
 import styles from './AttributeForm.module.css'; // Import the styles module
+import { collection, getDocs, setDoc, doc } from 'firebase/firestore';
+
+// --- AUTOSUGGEST DROPDOWN COMPONENT ---
+function AttributeNameAutosuggest({ value, onChange, suggestions, onSuggestionSelect, inputProps }) {
+  const [showDropdown, setShowDropdown] = useState(false);
+  const [filtered, setFiltered] = useState([]);
+  const inputRef = useRef();
+
+  useEffect(() => {
+    if (value) {
+      const lower = value.toLowerCase();
+      setFiltered(suggestions.filter(s => s.name.toLowerCase().includes(lower) && s.name !== value));
+      setShowDropdown(suggestions.some(s => s.name.toLowerCase().includes(lower) && s.name !== value));
+    } else {
+      setFiltered([]);
+      setShowDropdown(false);
+    }
+  }, [value, suggestions]);
+
+  return (
+    <div style={{ position: 'relative' }}>
+      <input
+        {...inputProps}
+        ref={inputRef}
+        value={value}
+        onChange={e => {
+          onChange(e.target.value);
+        }}
+        onFocus={() => setShowDropdown(filtered.length > 0)}
+        onBlur={() => setTimeout(() => setShowDropdown(false), 120)}
+        autoComplete="off"
+      />
+      {showDropdown && filtered.length > 0 && (
+        <ul style={{
+          position: 'absolute',
+          zIndex: 10,
+          background: 'white',
+          border: '1px solid #ccc',
+          borderRadius: 4,
+          margin: 0,
+          padding: 0,
+          width: '100%',
+          maxHeight: 160,
+          overflowY: 'auto',
+          listStyle: 'none',
+        }}>
+          {filtered.map(s => (
+            <li
+              key={s.name}
+              style={{ padding: '6px 12px', cursor: 'pointer' }}
+              onMouseDown={e => {
+                e.preventDefault();
+                onSuggestionSelect(s);
+                setShowDropdown(false);
+              }}
+            >
+              {s.name} <span style={{ color: '#888', fontSize: 12 }}>({s.type})</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
 
 export default function AttributeForm({ subProcess, onSave }) {
   const [attributes, setAttributes] = useState({});
@@ -11,6 +75,9 @@ export default function AttributeForm({ subProcess, onSave }) {
   const [objectFields, setObjectFields] = useState([{ key: '', value: '', type: 'string' }]); // For object type
   const [editKey, setEditKey] = useState(null);
   const [editOriginalKey, setEditOriginalKey] = useState(null);
+  // Remove the hardcoded array and restore Firestore-based suggestions
+  const [attributeNameSuggestions, setAttributeNameSuggestions] = useState([]); // [{name, type}]
+  const attributeNamesFetched = useRef(false);
 
   // Use the context to get Firebase instances
   const firebaseContext = useContext(FirebaseContext);
@@ -25,6 +92,42 @@ export default function AttributeForm({ subProcess, onSave }) {
       setAttributes(JSON.parse(JSON.stringify(subProcess.attributes || {})));
     }
   }, [subProcess]);
+
+  // Fetch attribute names from Firestore on mount
+  useEffect(() => {
+    if (!db || attributeNamesFetched.current) return;
+    attributeNamesFetched.current = true;
+    getDocs(collection(db, 'attributeNames')).then(snapshot => {
+      console.log('Firestore snapshot:', snapshot);
+      const names = [];
+      snapshot.forEach(docSnap => {
+        names.push(docSnap.data());
+      });
+      console.log('Parsed attribute names:', names);
+      setAttributeNameSuggestions(names);
+    }).catch(e => {
+      console.error('Error fetching attribute names from Firestore:', e);
+    });
+  }, [db]);
+
+  // Helper to add attribute name/type to Firestore if not present
+  const addAttributeNameToFirestore = async (name, type) => {
+    if (!db || !name) return;
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    // Check if already in local suggestions
+    if (attributeNameSuggestions.some(s => s.name === trimmed && s.type === type)) return;
+    // Add to Firestore
+    try {
+      await setDoc(doc(db, 'attributeNames', trimmed), { name: trimmed, type }, { merge: true });
+      // setAttributeNameSuggestions(prev => { // This line is no longer needed
+      //   if (prev.some(s => s.name === trimmed && s.type === type)) return prev;
+      //   return [...prev, { name: trimmed, type }];
+      // });
+    } catch (e) {
+      // Optionally handle error
+    }
+  };
 
   // Remove the useEffect that resets objectFields on type change
 
@@ -118,7 +221,7 @@ export default function AttributeForm({ subProcess, onSave }) {
     }
   };
 
-  const handleAddOrEditAttribute = () => {
+  const handleAddOrEditAttribute = async () => {
     if (!newAttributeKey.trim()) {
       alert("Attribute name cannot be empty.");
       return;
@@ -168,12 +271,16 @@ export default function AttributeForm({ subProcess, onSave }) {
               for (const nestedPair of pair.nestedFields) {
                 if (nestedPair.key.trim() !== '') {
                   nestedObj[nestedPair.key.trim()] = nestedPair.value;
+                  // Add nested object key to Firestore
+                  addAttributeNameToFirestore(nestedPair.key.trim(), 'string'); // Default to string, or infer if needed
                 }
               }
               convertedValue = nestedObj;
             }
           }
           obj[pair.key.trim()] = convertedValue;
+          // Add object key to Firestore
+          addAttributeNameToFirestore(pair.key.trim(), pair.type);
         }
       }
       value = obj;
@@ -189,6 +296,8 @@ export default function AttributeForm({ subProcess, onSave }) {
     }
     newAttrs[newAttributeKey.trim()] = attrObj;
     persistAttributes(newAttrs);
+    // Add top-level attribute name to Firestore
+    addAttributeNameToFirestore(newAttributeKey.trim(), newAttributeType);
     setNewAttributeKey('');
     setNewAttributeValue('');
     setObjectFields([{ key: '', value: '', type: 'string' }]);
@@ -230,12 +339,24 @@ export default function AttributeForm({ subProcess, onSave }) {
     <div>
       <h4 className="text-md font-bold mb-2 text-gray-800">{editKey ? 'Edit Attribute' : 'Add New Attribute'}</h4>
       <div className="space-y-2 mb-6">
-        <input
-          type="text"
-          placeholder="Attribute Name"
+        <AttributeNameAutosuggest
           value={newAttributeKey}
-          onChange={(e) => setNewAttributeKey(e.target.value)}
-          className="w-full p-2 border border-gray-300 rounded-md"
+          onChange={val => {
+            setNewAttributeKey(val);
+            // If suggestion matches, auto-select type
+            const match = attributeNameSuggestions.find(s => s.name === val);
+            if (match) setNewAttributeType(match.type);
+          }}
+          suggestions={attributeNameSuggestions}
+          onSuggestionSelect={s => {
+            setNewAttributeKey(s.name);
+            setNewAttributeType(s.type);
+          }}
+          inputProps={{
+            type: 'text',
+            placeholder: 'Attribute Name',
+            className: 'w-full p-2 border border-gray-300 rounded-md',
+          }}
         />
         {/* Flex row for type and value */}
         <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
@@ -257,18 +378,32 @@ export default function AttributeForm({ subProcess, onSave }) {
               {objectFields.map((pair, idx) => (
                 <div key={idx} style={{ marginBottom: 8, padding: 8, border: '1px solid #e5e7eb', borderRadius: 6 }}>
                   <div style={{ display: 'flex', gap: '0.25rem', marginBottom: 4 }}>
-                    <input
-                      type="text"
-                      placeholder="Key"
+                    {/* --- Nested attribute key with autosuggest --- */}
+                    <AttributeNameAutosuggest
                       value={pair.key}
-                      onChange={e => {
+                      onChange={val => {
                         const updated = [...objectFields];
-                        updated[idx].key = e.target.value;
+                        updated[idx].key = val;
+                        // If suggestion matches, auto-select type
+                        const match = attributeNameSuggestions.find(s => s.name === val);
+                        if (match) updated[idx].type = match.type;
                         setObjectFields(updated);
                       }}
-                      className="p-1 border border-gray-300 rounded-md"
-                      style={{ width: '30%' }}
+                      suggestions={attributeNameSuggestions}
+                      onSuggestionSelect={s => {
+                        const updated = [...objectFields];
+                        updated[idx].key = s.name;
+                        updated[idx].type = s.type;
+                        setObjectFields(updated);
+                      }}
+                      inputProps={{
+                        type: 'text',
+                        placeholder: 'Key',
+                        className: 'p-1 border border-gray-300 rounded-md',
+                        style: { width: '30%' },
+                      }}
                     />
+                    {/* --- End nested autosuggest --- */}
                     <select
                       value={pair.type}
                       onChange={e => {
@@ -314,17 +449,29 @@ export default function AttributeForm({ subProcess, onSave }) {
                         {/* Nested object fields */}
                         {pair.nestedFields && pair.nestedFields.map((nestedPair, nestedIdx) => (
                           <div key={nestedIdx} style={{ display: 'flex', gap: '0.25rem', marginBottom: 2 }}>
-                            <input
-                              type="text"
-                              placeholder="Nested Key"
+                            <AttributeNameAutosuggest
                               value={nestedPair.key}
-                              onChange={e => {
+                              onChange={val => {
                                 const updated = [...objectFields];
-                                updated[idx].nestedFields[nestedIdx].key = e.target.value;
+                                updated[idx].nestedFields[nestedIdx].key = val;
+                                // If suggestion matches, auto-select type
+                                const match = attributeNameSuggestions.find(s => s.name === val);
+                                if (match) updated[idx].nestedFields[nestedIdx].type = match.type;
                                 setObjectFields(updated);
                               }}
-                              className="p-1 border border-gray-300 rounded-md"
-                              style={{ width: '40%' }}
+                              suggestions={attributeNameSuggestions}
+                              onSuggestionSelect={s => {
+                                const updated = [...objectFields];
+                                updated[idx].nestedFields[nestedIdx].key = s.name;
+                                updated[idx].nestedFields[nestedIdx].type = s.type;
+                                setObjectFields(updated);
+                              }}
+                              inputProps={{
+                                type: 'text',
+                                placeholder: 'Nested Key',
+                                className: 'p-1 border border-gray-300 rounded-md',
+                                style: { width: '40%' },
+                              }}
                             />
                             <input
                               type="text"
