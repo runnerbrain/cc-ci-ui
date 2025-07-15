@@ -12,7 +12,7 @@ import { useRouter } from 'next/router';
 // Add allowed editors list at the top
 const ALLOWED_EDITORS = [
   'runnerbrain@gmail.com',
-  'editor2@gmail.com',
+  'ali.akkila@gmail.com',
 ];
 
 export default function Home() {
