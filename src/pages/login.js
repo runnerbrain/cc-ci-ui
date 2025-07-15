@@ -1,6 +1,6 @@
 import React, { useState, useContext } from 'react';
 import { useRouter } from 'next/router';
-import { getAuth, signInWithPopup, GoogleAuthProvider } from 'firebase/auth';
+import { getAuth, signInWithPopup, GoogleAuthProvider, setPersistence, browserSessionPersistence } from 'firebase/auth';
 import { FirebaseContext } from '../lib/FirebaseContext';
 
 const ALLOWED_EDITORS = [
@@ -17,6 +17,8 @@ export default function LoginPage() {
     setError('');
     try {
       const auth = getAuth(firebaseApp);
+      // Set session-only persistence
+      await setPersistence(auth, browserSessionPersistence);
       const provider = new GoogleAuthProvider();
       const result = await signInWithPopup(auth, provider);
       const email = result.user.email;

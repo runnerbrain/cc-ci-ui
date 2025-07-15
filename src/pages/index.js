@@ -1,6 +1,6 @@
 // pages/index.js
 import { useState, useEffect, useContext, useCallback } from 'react';
-import { getAuth, signInAnonymously, onAuthStateChanged, signOut } from 'firebase/auth';
+import { getAuth, signInAnonymously, onAuthStateChanged, signOut, setPersistence, browserSessionPersistence } from 'firebase/auth';
 import { getFirestore, collection, doc, setDoc, onSnapshot, query, deleteDoc, updateDoc, writeBatch, getDocs, collectionGroup } from 'firebase/firestore'; // Added collectionGroup
 import Layout from '../components/Layout';
 import AttributeForm from '../components/AttributeForm';
@@ -8,6 +8,12 @@ import { Modal } from '../components/Modal'; // Import Modal
 import { ConfirmModal } from '../components/ConfirmModal'; // Import ConfirmModal
 import { FirebaseContext } from '../lib/FirebaseContext'; // Import the centralized context
 import { useRouter } from 'next/router';
+
+// Add allowed editors list at the top
+const ALLOWED_EDITORS = [
+  'runnerbrain@gmail.com',
+  'editor2@gmail.com',
+];
 
 export default function Home() {
   const firebaseApp = useContext(FirebaseContext);
@@ -40,6 +46,9 @@ export default function Home() {
   // Add state for add sub-process modal
   const [isAddSubProcessModalOpen, setIsAddSubProcessModalOpen] = useState(false);
   const [subProcessNameInput, setSubProcessNameInput] = useState("");
+
+  // Add state for access denied
+  const [accessDenied, setAccessDenied] = useState(false);
 
   // --- Firebase Authentication Effect ---
   useEffect(() => {
@@ -89,23 +98,33 @@ export default function Home() {
       return;
     }
 
-    const unsubscribe = onAuthStateChanged(auth, async (user) => {
-      if (user) {
-        setCurrentUser({ email: user.email, uid: user.uid });
-        console.log("Authenticated with user:", user.email || user.uid);
-      } else {
-        setCurrentUser(null);
-        try {
-          // Attempt anonymous sign-in if no user is found
-          await signInAnonymously(auth);
-        } catch (error) {
-          console.error("Firebase authentication error:", error);
+    // Set session-only persistence
+    setPersistence(auth, browserSessionPersistence).then(() => {
+      const unsubscribe = onAuthStateChanged(auth, async (user) => {
+        if (user) {
+          setCurrentUser({ email: user.email, uid: user.uid });
+          // Check allowed editors
+          if (!user.email || !ALLOWED_EDITORS.includes(user.email)) {
+            setAccessDenied(true);
+          } else {
+            setAccessDenied(false);
+          }
+          console.log("Authenticated with user:", user.email || user.uid);
+        } else {
+          setCurrentUser(null);
+          setAccessDenied(false);
+          try {
+            // Attempt anonymous sign-in if no user is found
+            await signInAnonymously(auth);
+          } catch (error) {
+            console.error("Firebase authentication error:", error);
+          }
         }
-      }
-      setLoadingFirebase(false);
-    });
+        setLoadingFirebase(false);
+      });
 
-    return () => unsubscribe(); // Cleanup subscription
+      return () => unsubscribe(); // Cleanup subscription
+    });
   }, [auth, firebaseApp]); // Depend on auth and projectId to re-run if they become available
 
   // --- Data Fetching Effects (Firestore) ---
@@ -376,8 +395,45 @@ export default function Home() {
     }
   };
 
+  // Render only a fullscreen spinner (no Layout) while loadingFirebase is true
   if (loadingFirebase) {
-    return <Layout><div className="text-center py-8 text-gray-600">Initializing Firebase...</div></Layout>;
+    return (
+      <div style={{
+        minHeight: '100vh',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        background: '#f3f4f6'
+      }}>
+        <div className="text-center py-8 text-gray-600 text-xl font-semibold">Initializing Firebase...</div>
+      </div>
+    );
+  }
+
+  // If not authenticated, redirect to /login immediately (no flash)
+  if (!currentUser || !currentUser.email) {
+    if (typeof window !== 'undefined') {
+      window.location.replace('/login');
+    }
+    return null;
+  }
+
+  // If access denied, show message and hide all editing features
+  if (accessDenied) {
+    return (
+      <Layout user={currentUser} onLogout={handleLogout}>
+        <div className="flex flex-col items-center justify-center min-h-[60vh]">
+          <h2 className="text-2xl font-bold text-red-600 mb-4">Access Denied</h2>
+          <p className="text-gray-700 mb-6">You do not have permission to edit this app. Please contact the administrator if you believe this is an error.</p>
+          <button
+            className="bg-red-500 hover:bg-red-600 text-white font-bold py-2 px-4 rounded-lg transition-colors duration-200"
+            onClick={handleLogout}
+          >
+            Logout
+          </button>
+        </div>
+      </Layout>
+    );
   }
 
   return (

@@ -1,6 +1,6 @@
 // components/AttributeForm.js
 import { useState, useEffect, useContext, useRef } from 'react'; // Corrected this line
-import FirebaseContext from '../lib/FirebaseContext'; // Import the centralized context
+import {FirebaseContext} from '../lib/FirebaseContext'; // Import the centralized context
 import styles from './AttributeForm.module.css'; // Import the styles module
 import { collection, getDocs, setDoc, doc } from 'firebase/firestore';
 
@@ -78,6 +78,10 @@ export default function AttributeForm({ subProcess, onSave }) {
   // Remove the hardcoded array and restore Firestore-based suggestions
   const [attributeNameSuggestions, setAttributeNameSuggestions] = useState([]); // [{name, type}]
   const attributeNamesFetched = useRef(false);
+  // Add notification state
+  const [showSaved, setShowSaved] = useState(false);
+  // Add error notification state
+  const [errorMsg, setErrorMsg] = useState("");
 
   // Use the context to get Firebase instances
   const firebaseContext = useContext(FirebaseContext);
@@ -223,7 +227,8 @@ export default function AttributeForm({ subProcess, onSave }) {
 
   const handleAddOrEditAttribute = async () => {
     if (!newAttributeKey.trim()) {
-      alert("Attribute name cannot be empty.");
+      setErrorMsg("Attribute name cannot be empty.");
+      setTimeout(() => setErrorMsg(""), 2000);
       return;
     }
     let newAttrs = { ...attributes };
@@ -234,14 +239,16 @@ export default function AttributeForm({ subProcess, onSave }) {
       (editKey && editOriginalKey !== trimmedKey && attributes.hasOwnProperty(trimmedKey)) ||
       (!editKey && attributes.hasOwnProperty(trimmedKey))
     ) {
-      alert(`Attribute name "${trimmedKey}" already exists. Please choose a unique name.`);
+      setErrorMsg(`Attribute name "${trimmedKey}" already exists. Please choose a unique name.`);
+      setTimeout(() => setErrorMsg(""), 2000);
       return;
     }
     // Basic conversion for number and boolean
     if (newAttributeType === 'number') {
       value = Number(newAttributeValue);
       if (isNaN(value)) {
-        alert('Please enter a valid number.');
+        setErrorMsg('Please enter a valid number.');
+        setTimeout(() => setErrorMsg(""), 2000);
         return;
       }
     } else if (newAttributeType === 'boolean') {
@@ -256,7 +263,8 @@ export default function AttributeForm({ subProcess, onSave }) {
           if (pair.type === 'number') {
             convertedValue = Number(pair.value);
             if (isNaN(convertedValue)) {
-              alert(`Please enter a valid number for key "${pair.key}".`);
+              setErrorMsg(`Please enter a valid number for key "${pair.key}".`);
+              setTimeout(() => setErrorMsg(""), 2000);
               return;
             }
           } else if (pair.type === 'boolean') {
@@ -291,7 +299,8 @@ export default function AttributeForm({ subProcess, onSave }) {
         delete newAttrs[editOriginalKey];
       }
     } else if (attributes.hasOwnProperty(newAttributeKey.trim())) {
-      alert(`Attribute \"${newAttributeKey.trim()}\" already exists.`);
+      setErrorMsg(`Attribute \"${newAttributeKey.trim()}\" already exists.`);
+      setTimeout(() => setErrorMsg(""), 2000);
       return;
     }
     newAttrs[newAttributeKey.trim()] = attrObj;
@@ -304,6 +313,9 @@ export default function AttributeForm({ subProcess, onSave }) {
     setNewAttributeType('string');
     setEditKey(null);
     setEditOriginalKey(null);
+    // Show saved notification
+    setShowSaved(true);
+    setTimeout(() => setShowSaved(false), 2000);
   };
 
   // Helper function to render attribute values recursively
@@ -337,6 +349,44 @@ export default function AttributeForm({ subProcess, onSave }) {
 
   return (
     <div>
+      {/* Error notification */}
+      {errorMsg && (
+        <div style={{
+          background: '#fdecea',
+          color: '#a94442',
+          border: '1px solid #f5c6cb',
+          borderRadius: 6,
+          padding: '8px 16px',
+          marginBottom: 12,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+          fontWeight: 500,
+          fontSize: 16
+        }}>
+          <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="#a94442" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+          {errorMsg}
+        </div>
+      )}
+      {/* Notification for attribute saved */}
+      {showSaved && (
+        <div style={{
+          background: '#e6f9ed',
+          color: '#217a3c',
+          border: '1px solid #b6e2c7',
+          borderRadius: 6,
+          padding: '8px 16px',
+          marginBottom: 12,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+          fontWeight: 500,
+          fontSize: 16
+        }}>
+          <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="#217a3c" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7"/></svg>
+          Attribute saved
+        </div>
+      )}
       <h4 className="text-md font-bold mb-2 text-gray-800">{editKey ? 'Edit Attribute' : 'Add New Attribute'}</h4>
       <div className="space-y-2 mb-6">
         <AttributeNameAutosuggest
