@@ -3,6 +3,7 @@ import { useState, useEffect, useContext, useRef } from 'react'; // Corrected th
 import {FirebaseContext} from '../lib/FirebaseContext'; // Import the centralized context
 import styles from './AttributeForm.module.css'; // Import the styles module
 import { collection, getDocs, setDoc, doc } from 'firebase/firestore';
+import ReactMarkdown from 'react-markdown'; // You need to install this: npm install react-markdown
 
 // --- AUTOSUGGEST DROPDOWN COMPONENT ---
 function AttributeNameAutosuggest({ value, onChange, suggestions, onSuggestionSelect, inputProps }) {
@@ -342,6 +343,25 @@ export default function AttributeForm({ subProcess, onSave }) {
           </ul>
         )
         : value.join(', ');
+    } else if (type === 'rtf') {
+      return (
+        <div className="markdown-preview">
+          <ReactMarkdown
+            components={{
+              h1: ({node, ...props}) => <h1 className="text-2xl font-bold my-2" {...props} />,
+              h2: ({node, ...props}) => <h2 className="text-xl font-bold my-2" {...props} />,
+              h3: ({node, ...props}) => <h3 className="text-lg font-bold my-2" {...props} />,
+              ul: ({node, ...props}) => <ul className="list-disc ml-6 my-2" {...props} />,
+              ol: ({node, ...props}) => <ol className="list-decimal ml-6 my-2" {...props} />,
+              li: ({node, ...props}) => <li className="mb-1" {...props} />,
+              strong: ({node, ...props}) => <strong className="font-bold" {...props} />,
+              p: ({node, ...props}) => <p className="my-1" {...props} />,
+            }}
+          >
+            {value}
+          </ReactMarkdown>
+        </div>
+      );
     } else {
       return String(value);
     }
@@ -421,6 +441,7 @@ export default function AttributeForm({ subProcess, onSave }) {
             <option value="boolean">Boolean</option>
             <option value="object">Object</option>
             <option value="array">Array</option>
+            <option value="rtf">RTF (Markdown)</option>
           </select>
           {/* Value input (object type gets a subform) */}
           {newAttributeType === 'object' ? (
@@ -611,6 +632,34 @@ export default function AttributeForm({ subProcess, onSave }) {
               >
                 + Add Pair
               </button>
+            </div>
+          ) : newAttributeType === 'rtf' ? (
+            <div style={{ flex: 1 }}>
+              <textarea
+                placeholder="Enter Markdown text (e.g. **bold**, - bullet)"
+                value={newAttributeValue}
+                onChange={e => setNewAttributeValue(e.target.value)}
+                className="p-2 border border-gray-300 rounded-md w-full"
+                rows={5}
+                style={{ fontFamily: 'monospace', marginBottom: 8 }}
+              />
+              <div style={{ background: '#f8fafc', border: '1px solid #e5e7eb', borderRadius: 6, padding: 8, marginTop: 4 }} className="markdown-preview">
+                <div style={{ fontWeight: 600, marginBottom: 4, color: '#555' }}>Preview:</div>
+                <ReactMarkdown
+                  components={{
+                    h1: ({node, ...props}) => <h1 className="text-2xl font-bold my-2" {...props} />,
+                    h2: ({node, ...props}) => <h2 className="text-xl font-bold my-2" {...props} />,
+                    h3: ({node, ...props}) => <h3 className="text-lg font-bold my-2" {...props} />,
+                    ul: ({node, ...props}) => <ul className="list-disc ml-6 my-2" {...props} />,
+                    ol: ({node, ...props}) => <ol className="list-decimal ml-6 my-2" {...props} />,
+                    li: ({node, ...props}) => <li className="mb-1" {...props} />,
+                    strong: ({node, ...props}) => <strong className="font-bold" {...props} />,
+                    p: ({node, ...props}) => <p className="my-1" {...props} />,
+                  }}
+                >
+                  {newAttributeValue}
+                </ReactMarkdown>
+              </div>
             </div>
           ) : newAttributeType === 'boolean' ? (
             <select
