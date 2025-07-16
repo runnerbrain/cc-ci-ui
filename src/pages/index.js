@@ -8,13 +8,7 @@ import { Modal } from '../components/Modal'; // Import Modal
 import { ConfirmModal } from '../components/ConfirmModal'; // Import ConfirmModal
 import { FirebaseContext } from '../lib/FirebaseContext'; // Import the centralized context
 import { useRouter } from 'next/router';
-
-// Add allowed editors list at the top
-const ALLOWED_EDITORS = [
-  'runnerbrain@gmail.com',
-  'samra.nasser@gmail.com',
-  'ali.akkila@gmail.com',
-];
+import { ALLOWED_EDITORS } from '../lib/allowedEditors';
 
 export default function Home() {
   const firebaseApp = useContext(FirebaseContext);
@@ -104,8 +98,13 @@ export default function Home() {
       const unsubscribe = onAuthStateChanged(auth, async (user) => {
         if (user) {
           setCurrentUser({ email: user.email, uid: user.uid });
-          // Check allowed editors
-          if (!user.email || !ALLOWED_EDITORS.includes(user.email)) {
+          // Debug log for email and allowed editors
+          const normalizedUserEmail = user.email ? user.email.toLowerCase().trim() : '';
+          const normalizedAllowed = ALLOWED_EDITORS.map(e => e.toLowerCase().trim());
+          console.log('[DEBUG] Normalized user email:', normalizedUserEmail);
+          console.log('[DEBUG] Normalized allowed editors:', normalizedAllowed);
+          // Check allowed editors (normalized)
+          if (!normalizedUserEmail || !normalizedAllowed.includes(normalizedUserEmail)) {
             setAccessDenied(true);
           } else {
             setAccessDenied(false);

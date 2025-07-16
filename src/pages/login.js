@@ -2,11 +2,7 @@ import React, { useState, useContext } from 'react';
 import { useRouter } from 'next/router';
 import { getAuth, signInWithPopup, GoogleAuthProvider, setPersistence, browserSessionPersistence } from 'firebase/auth';
 import { FirebaseContext } from '../lib/FirebaseContext';
-
-const ALLOWED_EDITORS = [
-  'runnerbrain@gmail.com',
-  'editor2@gmail.com',
-];
+import { ALLOWED_EDITORS } from '../lib/allowedEditors';
 
 export default function LoginPage() {
   const firebaseApp = useContext(FirebaseContext);
@@ -22,7 +18,12 @@ export default function LoginPage() {
       const provider = new GoogleAuthProvider();
       const result = await signInWithPopup(auth, provider);
       const email = result.user.email;
-      if (ALLOWED_EDITORS.includes(email)) {
+      // Debug log for email and allowed editors
+      const normalizedEmail = email ? email.toLowerCase().trim() : '';
+      const normalizedAllowed = ALLOWED_EDITORS.map(e => e.toLowerCase().trim());
+      console.log('[DEBUG] Normalized Google login email:', normalizedEmail);
+      console.log('[DEBUG] Normalized allowed editors:', normalizedAllowed);
+      if (normalizedAllowed.includes(normalizedEmail)) {
         router.push('/');
       } else {
         setError('Access denied: You do not have edit access.');
