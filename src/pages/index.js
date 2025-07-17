@@ -12,6 +12,24 @@ import { ALLOWED_EDITORS } from '../lib/allowedEditors';
 import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
 
+// Helper to clean up attributeNames after subprocess delete
+const cleanupAttributeNamesAfterSubprocessDelete = async (attrNames) => {
+  if (!db || !attrNames || attrNames.length === 0) return;
+  const subProcessSnapshots = await getDocs(collectionGroup(db, 'subProcesses'));
+  for (const attrName of attrNames) {
+    let found = false;
+    subProcessSnapshots.forEach(docSnap => {
+      const attrs = docSnap.data().attributes || {};
+      if (Object.keys(attrs).includes(attrName)) {
+        found = true;
+      }
+    });
+    if (!found) {
+      await deleteDoc(doc(db, 'attributeNames', attrName));
+    }
+  }
+};
+
 export default function Home() {
   const firebaseApp = useContext(FirebaseContext);
   const db = firebaseApp ? getFirestore(firebaseApp) : null;
@@ -400,12 +418,21 @@ export default function Home() {
       return;
     }
     try {
+      // Get the attributes of the subprocess before deleting
+      const subProcessDoc = await getDocs(query(collection(db, `artifacts/${firebaseApp.options.appId}/users/${processTitleOwnerUserId}/processTitles/${activeProcessTitleId}/subProcesses`), where('id', '==', id)));
+      let attrNames = [];
+      subProcessDoc.forEach(docSnap => {
+        const attrs = docSnap.data().attributes || {};
+        attrNames = attrNames.concat(Object.keys(attrs));
+      });
       await deleteDoc(doc(db, `artifacts/${firebaseApp.options.appId}/users/${processTitleOwnerUserId}/processTitles/${activeProcessTitleId}/subProcesses`, id));
       console.log(`Sub-process ${id} deleted.`);
       // If the deleted sub-process was selected, deselect it
       if (selectedSubProcess && selectedSubProcess.id === id) {
         setSelectedSubProcess(null);
       }
+      // Clean up attributeNames
+      await cleanupAttributeNamesAfterSubprocessDelete(attrNames);
     } catch (e) {
       console.error("Error deleting sub-process: ", e);
       alert("Error deleting sub-process.");

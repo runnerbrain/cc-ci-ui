@@ -2,7 +2,7 @@
 import { useState, useEffect, useContext, useRef } from 'react'; // Corrected this line
 import {FirebaseContext} from '../lib/FirebaseContext'; // Import the centralized context
 import styles from './AttributeForm.module.css'; // Import the styles module
-import { collection, getDocs, setDoc, doc, deleteDoc, query, where, serverTimestamp, updateDoc } from 'firebase/firestore';
+import { collection, getDocs, setDoc, doc, deleteDoc, query, where, serverTimestamp, updateDoc, collectionGroup } from 'firebase/firestore';
 import ReactMarkdown from 'react-markdown'; // You need to install this: npm install react-markdown
 import TextField from '@mui/material/TextField';
 import Select from '@mui/material/Select';
@@ -186,6 +186,24 @@ export default function AttributeForm({ subProcess, onSave, onFupChanged }) {
     }
   };
 
+  // Helper to clean up attributeNames if not used anywhere else
+  const cleanupAttributeNameInFirestore = async (attrName) => {
+    if (!db || !attrName) return;
+    // Search all subProcesses for this attribute name
+    const subProcessSnapshots = await getDocs(collectionGroup(db, 'subProcesses'));
+    let found = false;
+    subProcessSnapshots.forEach(docSnap => {
+      const attrs = docSnap.data().attributes || {};
+      if (Object.keys(attrs).includes(attrName)) {
+        found = true;
+      }
+    });
+    if (!found) {
+      // Delete from attributeNames
+      await deleteDoc(doc(db, 'attributeNames', attrName));
+    }
+  };
+
   // Remove the useEffect that resets objectFields on type change
 
   const persistAttributes = (updatedAttributes) => {
@@ -241,6 +259,40 @@ export default function AttributeForm({ subProcess, onSave, onFupChanged }) {
       delete newAttrs[key];
       console.log('After delete:', newAttrs);
       persistAttributes(newAttrs);
+      // Clean up attributeNames if not used elsewhere
+      cleanupAttributeNameInFirestore(key).then(() => {
+        // After cleanup, re-fetch attribute names from Firestore
+        if (db) {
+          getDocs(collection(db, 'attributeNames')).then(snapshot => {
+            const names = [];
+            snapshot.forEach(docSnap => {
+              names.push(docSnap.data());
+            });
+            setAttributeNameSuggestions(names);
+          });
+        }
+      });
+      // Delete any FUPs for this attribute
+      if (db && subProcess && subProcess.processId && subProcess.id) {
+        const fupQuery = query(
+          collection(db, 'AttributeFUP'),
+          where('processId', '==', subProcess.processId),
+          where('subProcessId', '==', subProcess.id)
+        );
+        getDocs(fupQuery).then(snapshot => {
+          const deletePromises = [];
+          snapshot.forEach(docSnap => {
+            const fupAttrKey = docSnap.data().attributeKey;
+            // Delete FUP if it matches the deleted attribute, or if it is now orphaned
+            if (fupAttrKey === key || !Object.keys(newAttrs).includes(fupAttrKey)) {
+              deletePromises.push(deleteDoc(docSnap.ref));
+            }
+          });
+          Promise.all(deletePromises).then(() => {
+            if (onFupChanged) onFupChanged();
+          });
+        });
+      }
       return newAttrs;
     });
   };
