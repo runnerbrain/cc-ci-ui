@@ -32,5 +32,10 @@ service cloud.firestore {
     match /{path=**}/subProcesses/{subProcessId} {
       allow read, write: if isAllowedEditor();
     }
+
+    // Rule: Allows allowed editors to read/write AttributeFUP
+    match /AttributeFUP/{docId} {
+      allow read, write: if isAllowedEditor();
+    }
   }
 } 

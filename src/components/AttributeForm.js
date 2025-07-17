@@ -2,11 +2,18 @@
 import { useState, useEffect, useContext, useRef } from 'react'; // Corrected this line
 import {FirebaseContext} from '../lib/FirebaseContext'; // Import the centralized context
 import styles from './AttributeForm.module.css'; // Import the styles module
-import { collection, getDocs, setDoc, doc } from 'firebase/firestore';
+import { collection, getDocs, setDoc, doc, deleteDoc, query, where, serverTimestamp, updateDoc } from 'firebase/firestore';
 import ReactMarkdown from 'react-markdown'; // You need to install this: npm install react-markdown
 import TextField from '@mui/material/TextField';
 import Select from '@mui/material/Select';
 import MenuItem from '@mui/material/MenuItem';
+import Autocomplete from '@mui/material/Autocomplete';
+import Paper from '@mui/material/Paper';
+import Dialog from '@mui/material/Dialog';
+import DialogTitle from '@mui/material/DialogTitle';
+import DialogContent from '@mui/material/DialogContent';
+import DialogActions from '@mui/material/DialogActions';
+import Button from '@mui/material/Button';
 
 // --- AUTOSUGGEST DROPDOWN COMPONENT ---
 function AttributeNameAutosuggest({ value, onChange, suggestions, onSuggestionSelect, inputProps }) {
@@ -71,7 +78,7 @@ function AttributeNameAutosuggest({ value, onChange, suggestions, onSuggestionSe
   );
 }
 
-export default function AttributeForm({ subProcess, onSave }) {
+export default function AttributeForm({ subProcess, onSave, onFupChanged }) {
   const [attributes, setAttributes] = useState({});
   const [newAttributeKey, setNewAttributeKey] = useState('');
   const [newAttributeValue, setNewAttributeValue] = useState('');
@@ -86,6 +93,16 @@ export default function AttributeForm({ subProcess, onSave }) {
   const [showSaved, setShowSaved] = useState(false);
   // Add error notification state
   const [errorMsg, setErrorMsg] = useState("");
+  // Add state for follow-up modal
+  const [fupModalOpen, setFupModalOpen] = useState(false);
+  const [fupAttributeKey, setFupAttributeKey] = useState(null);
+  // Placeholder: map of attributeKey to follow-up status (will be fetched from Firestore)
+  const [attributeFupStatus, setAttributeFupStatus] = useState({}); // { [attributeKey]: { exists: bool, status: 'open'|'resolved' } }
+  // Add state for follow-ups
+  const [attributeFupData, setAttributeFupData] = useState({}); // { [attributeKey]: { id, question, status } }
+  const [fupInput, setFupInput] = useState('');
+  const [fupLoading, setFupLoading] = useState(false);
+  const [fupError, setFupError] = useState('');
 
   // Use the context to get Firebase instances
   const firebaseContext = useContext(FirebaseContext);
@@ -117,6 +134,38 @@ export default function AttributeForm({ subProcess, onSave }) {
       console.error('Error fetching attribute names from Firestore:', e);
     });
   }, [db]);
+
+  // Fetch follow-ups for this subprocess on mount or when subProcess changes
+  useEffect(() => {
+    if (!db || !subProcess || !subProcess.id || !subProcess.processId) return;
+    setFupLoading(true);
+    setFupError('');
+    const q = query(
+      collection(db, 'AttributeFUP'),
+      where('processId', '==', subProcess.processId),
+      where('subProcessId', '==', subProcess.id)
+    );
+    getDocs(q)
+      .then(snapshot => {
+        const data = {};
+        snapshot.forEach(docSnap => {
+          const d = docSnap.data();
+          data[d.attributeKey] = { id: docSnap.id, ...d };
+        });
+        setAttributeFupData(data);
+        // Also update status for icon
+        const statusMap = {};
+        Object.entries(data).forEach(([k, v]) => {
+          statusMap[k] = { exists: true, status: v.status };
+        });
+        setAttributeFupStatus(statusMap);
+        setFupLoading(false);
+      })
+      .catch(e => {
+        setFupError('Failed to load follow-ups');
+        setFupLoading(false);
+      });
+  }, [db, subProcess]);
 
   // Helper to add attribute name/type to Firestore if not present
   const addAttributeNameToFirestore = async (name, type) => {
@@ -190,6 +239,7 @@ export default function AttributeForm({ subProcess, onSave }) {
     setAttributes(prevAttributes => {
       const newAttrs = { ...prevAttributes };
       delete newAttrs[key];
+      console.log('After delete:', newAttrs);
       persistAttributes(newAttrs);
       return newAttrs;
     });
@@ -370,6 +420,153 @@ export default function AttributeForm({ subProcess, onSave }) {
     }
   }
 
+  // Helper: open modal and set input if editing
+  const openFupModal = (key) => {
+    setFupAttributeKey(key);
+    setFupModalOpen(true);
+    setFupInput(attributeFupData[key]?.question || '');
+    setFupError('');
+  };
+
+  // Add or update follow-up
+  const handleFupSave = async () => {
+    console.log('handleFupSave', {
+      db,
+      subProcess,
+      fupAttributeKey,
+      fupInput,
+      processId: subProcess?.processId,
+      subProcessId: subProcess?.id
+    });
+    if (!db || !subProcess || !subProcess.id || !subProcess.processId || !fupAttributeKey) return;
+    if (!fupInput.trim()) {
+      setFupError('Question/concern cannot be empty.');
+      return;
+    }
+    setFupLoading(true);
+    setFupError('');
+    const fupRef = attributeFupData[fupAttributeKey]?.id
+      ? doc(db, 'AttributeFUP', attributeFupData[fupAttributeKey].id)
+      : doc(collection(db, 'AttributeFUP'));
+    const data = {
+      processId: subProcess.processId,
+      subProcessId: subProcess.id,
+      attributeKey: fupAttributeKey,
+      question: fupInput.trim(),
+      status: 'open',
+      updatedAt: serverTimestamp(),
+      ...(attributeFupData[fupAttributeKey]?.id ? {} : { createdAt: serverTimestamp() })
+    };
+    try {
+      await setDoc(fupRef, data, { merge: true });
+      // Refresh follow-ups
+      setFupModalOpen(false);
+      if (onFupChanged) onFupChanged();
+      setTimeout(() => {
+        // Re-fetch follow-ups
+        if (!db || !subProcess || !subProcess.id || !subProcess.processId) return;
+        const q = query(
+          collection(db, 'AttributeFUP'),
+          where('processId', '==', subProcess.processId),
+          where('subProcessId', '==', subProcess.id)
+        );
+        getDocs(q).then(snapshot => {
+          const data = {};
+          snapshot.forEach(docSnap => {
+            const d = docSnap.data();
+            data[d.attributeKey] = { id: docSnap.id, ...d };
+          });
+          setAttributeFupData(data);
+          const statusMap = {};
+          Object.entries(data).forEach(([k, v]) => {
+            statusMap[k] = { exists: true, status: v.status };
+          });
+          setAttributeFupStatus(statusMap);
+        });
+      }, 500);
+    } catch (e) {
+      setFupError('Failed to save follow-up.');
+    }
+    setFupLoading(false);
+  };
+
+  // Resolve follow-up
+  const handleFupResolve = async () => {
+    if (!db || !attributeFupData[fupAttributeKey]?.id) return;
+    setFupLoading(true);
+    setFupError('');
+    try {
+      await updateDoc(doc(db, 'AttributeFUP', attributeFupData[fupAttributeKey].id), {
+        status: 'resolved',
+        updatedAt: serverTimestamp(),
+      });
+      setFupModalOpen(false);
+      if (onFupChanged) onFupChanged();
+      setTimeout(() => {
+        // Re-fetch follow-ups
+        if (!db || !subProcess || !subProcess.id || !subProcess.processId) return;
+        const q = query(
+          collection(db, 'AttributeFUP'),
+          where('processId', '==', subProcess.processId),
+          where('subProcessId', '==', subProcess.id)
+        );
+        getDocs(q).then(snapshot => {
+          const data = {};
+          snapshot.forEach(docSnap => {
+            const d = docSnap.data();
+            data[d.attributeKey] = { id: docSnap.id, ...d };
+          });
+          setAttributeFupData(data);
+          const statusMap = {};
+          Object.entries(data).forEach(([k, v]) => {
+            statusMap[k] = { exists: true, status: v.status };
+          });
+          setAttributeFupStatus(statusMap);
+        });
+      }, 500);
+    } catch (e) {
+      setFupError('Failed to resolve follow-up.');
+    }
+    setFupLoading(false);
+  };
+
+  // Delete follow-up
+  const handleFupDelete = async () => {
+    if (!db || !attributeFupData[fupAttributeKey]?.id) return;
+    setFupLoading(true);
+    setFupError('');
+    try {
+      await deleteDoc(doc(db, 'AttributeFUP', attributeFupData[fupAttributeKey].id));
+      setFupModalOpen(false);
+      if (onFupChanged) onFupChanged();
+      setTimeout(() => {
+        // Re-fetch follow-ups
+        if (!db || !subProcess || !subProcess.id || !subProcess.processId) return;
+        const q = query(
+          collection(db, 'AttributeFUP'),
+          where('processId', '==', subProcess.processId),
+          where('subProcessId', '==', subProcess.id)
+        );
+        getDocs(q).then(snapshot => {
+          const data = {};
+          snapshot.forEach(docSnap => {
+            const d = docSnap.data();
+            data[d.attributeKey] = { id: docSnap.id, ...d };
+          });
+          setAttributeFupData(data);
+          const statusMap = {};
+          Object.entries(data).forEach(([k, v]) => {
+            statusMap[k] = { exists: true, status: v.status };
+          });
+          setAttributeFupStatus(statusMap);
+        });
+      }, 500);
+    } catch (e) {
+      setFupError('Failed to delete follow-up.');
+    }
+    setFupLoading(false);
+  };
+
   return (
     <div>
       {/* Error notification */}
@@ -412,14 +609,43 @@ export default function AttributeForm({ subProcess, onSave }) {
       )}
       <h4 className="text-md font-bold mb-2 text-gray-800">{editKey ? 'Edit Attribute' : 'Add New Attribute'}</h4>
       <div className="space-y-2 mb-6">
-        <TextField
-          label="Attribute Name"
-          variant="outlined"
-          size="small"
+        {/* Replace the attribute name TextField with MUI Autocomplete */}
+        <Autocomplete
+          freeSolo
+          options={attributeNameSuggestions.map(s => s.name)}
           value={newAttributeKey}
-          onChange={e => setNewAttributeKey(e.target.value)}
-          style={{ marginBottom: 8 }}
-          fullWidth
+          onInputChange={(event, newInputValue, reason) => {
+            setNewAttributeKey(newInputValue);
+            // If user types a name that matches a suggestion, set the type
+            const match = attributeNameSuggestions.find(s => s.name === newInputValue);
+            if (match) setNewAttributeType(match.type);
+          }}
+          onChange={(event, newValue) => {
+            if (typeof newValue === 'string') {
+              setNewAttributeKey(newValue);
+              // If it's a new name, default to string type
+              setNewAttributeType('string');
+              addAttributeNameToFirestore(newValue, 'string');
+            } else if (newValue && newValue.inputValue) {
+              setNewAttributeKey(newValue.inputValue);
+              setNewAttributeType('string');
+              addAttributeNameToFirestore(newValue.inputValue, 'string');
+            } else if (newValue) {
+              setNewAttributeKey(newValue);
+              const match = attributeNameSuggestions.find(s => s.name === newValue);
+              if (match) setNewAttributeType(match.type);
+            }
+          }}
+          renderInput={(params) => (
+            <TextField
+              {...params}
+              label="Attribute Name"
+              variant="outlined"
+              size="small"
+              style={{ marginBottom: 8 }}
+              fullWidth
+            />
+          )}
         />
         {/* Flex row for type and value */}
         <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
@@ -539,6 +765,7 @@ export default function AttributeForm({ subProcess, onSave }) {
                               <MenuItem value="string">String</MenuItem>
                               <MenuItem value="number">Number</MenuItem>
                               <MenuItem value="boolean">Boolean</MenuItem>
+                              <MenuItem value="array">Array</MenuItem>
                             </Select>
                             {nestedPair.type === 'boolean' ? (
                               <Select
@@ -649,17 +876,51 @@ export default function AttributeForm({ subProcess, onSave }) {
               </button>
             </div>
           ) : (
-            <TextField
-              label="Attribute Value"
-              variant="outlined"
-              size="small"
-              value={newAttributeValue}
-              onChange={e => setNewAttributeValue(e.target.value)}
-              style={{ marginBottom: 8 }}
-              multiline={newAttributeType === 'rtf' || newAttributeType === 'object'}
-              minRows={newAttributeType === 'rtf' || newAttributeType === 'object' ? 3 : 1}
-              fullWidth
-            />
+            <div style={{ flex: 2, minWidth: 180 }}>
+              {/* Value input based on type as MUI TextField/Select */}
+              {newAttributeType === 'rtf' ? (
+                <div style={{ flex: 2, minWidth: 180 }}>
+                  <TextField
+                    label="Markdown Text"
+                    variant="outlined"
+                    size="small"
+                    value={newAttributeValue}
+                    onChange={e => setNewAttributeValue(e.target.value)}
+                    multiline
+                    minRows={5}
+                    style={{ width: '100%', marginBottom: 8 }}
+                    fullWidth
+                  />
+                  <Paper elevation={1} style={{ background: '#f8fafc', border: '1px solid #e5e7eb', borderRadius: 6, padding: 8, marginTop: 4, color: '#1f2937' }} className="markdown-preview">
+                    <div style={{ fontWeight: 600, marginBottom: 4, color: '#555' }}>Preview:</div>
+                    <ReactMarkdown
+                      components={{
+                        h1: ({node, ...props}) => <h1 className="text-2xl font-bold my-2" {...props} />,
+                        h2: ({node, ...props}) => <h2 className="text-xl font-bold my-2" {...props} />,
+                        h3: ({node, ...props}) => <h3 className="text-lg font-bold my-2" {...props} />,
+                        ul: ({node, ...props}) => <ul className="list-disc ml-6 my-2" {...props} />,
+                        ol: ({node, ...props}) => <ol className="list-decimal ml-6 my-2" {...props} />,
+                        li: ({node, ...props}) => <li className="mb-1" {...props} />,
+                        strong: ({node, ...props}) => <strong className="font-bold" {...props} />,
+                        p: ({node, ...props}) => <p className="my-1" {...props} />,
+                      }}
+                    >
+                      {newAttributeValue}
+                    </ReactMarkdown>
+                  </Paper>
+                </div>
+              ) : (
+                <TextField
+                  label="Attribute Value"
+                  variant="outlined"
+                  size="small"
+                  value={newAttributeValue}
+                  onChange={e => setNewAttributeValue(e.target.value)}
+                  style={{ marginBottom: 8 }}
+                  fullWidth
+                />
+              )}
+            </div>
           )}
         </div>
         <button
@@ -701,6 +962,27 @@ export default function AttributeForm({ subProcess, onSave }) {
               </div>
             </div>
             <div className="flex items-center space-x-2 ml-4">
+              {/* Soccer corner flag icon for follow-up */}
+              <button
+                onClick={() => openFupModal(key)}
+                className="p-1"
+                title={attributeFupStatus[key]?.exists ? (attributeFupStatus[key].status === 'resolved' ? 'Follow-up resolved' : 'View follow-up') : 'Add follow-up'}
+                style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+              >
+                {attributeFupStatus[key]?.exists && attributeFupStatus[key].status === 'open' ? (
+                  // Solid red soccer corner flag
+                  <svg width="18" height="18" viewBox="0 0 18 18" style={{ display: 'block' }}>
+                    <rect x="3" y="3" width="2" height="12" rx="1" fill="#b91c1c" />
+                    <polygon points="5,3 14,6 5,9" fill="#b91c1c" />
+                  </svg>
+                ) : (
+                  // Faint outline soccer corner flag
+                  <svg width="18" height="18" viewBox="0 0 18 18" style={{ display: 'block' }}>
+                    <rect x="3" y="3" width="2" height="12" rx="1" fill="none" stroke="#aaa" strokeWidth="1.2" />
+                    <polygon points="5,3 14,6 5,9" fill="none" stroke="#aaa" strokeWidth="1.2" />
+                  </svg>
+                )}
+              </button>
               <button
                 onClick={() => handleEditAttribute(key)}
                 className="text-blue-500 hover:text-blue-700 p-1"
@@ -723,6 +1005,53 @@ export default function AttributeForm({ subProcess, onSave }) {
           </div>
         </div>
       ))}
+      {/* Follow-up modal */}
+      <Dialog open={fupModalOpen} onClose={() => setFupModalOpen(false)}>
+        <DialogTitle>Attribute Follow-up</DialogTitle>
+        <DialogContent>
+          {fupLoading ? (
+            <div style={{ minWidth: 260, minHeight: 60 }}>Loading...</div>
+          ) : attributeFupData[fupAttributeKey]?.id ? (
+            <div style={{ minWidth: 260 }}>
+              <div style={{ fontWeight: 600, marginBottom: 8 }}>Question/Concern:</div>
+              <textarea
+                value={fupInput}
+                onChange={e => setFupInput(e.target.value)}
+                rows={4}
+                style={{ width: '100%', border: '1px solid #ccc', borderRadius: 4, padding: 8, marginBottom: 8 }}
+              />
+              <div style={{ color: '#888', fontSize: 13, marginBottom: 8 }}>
+                Status: <b>{attributeFupData[fupAttributeKey]?.status}</b>
+              </div>
+              {fupError && <div style={{ color: 'red', marginBottom: 8 }}>{fupError}</div>}
+              <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+                <Button onClick={handleFupSave} variant="contained" color="primary" size="small">Save</Button>
+                {attributeFupData[fupAttributeKey]?.status === 'open' && (
+                  <Button onClick={handleFupResolve} variant="outlined" color="success" size="small">Resolve</Button>
+                )}
+                <Button onClick={handleFupDelete} variant="outlined" color="error" size="small">Delete</Button>
+              </div>
+            </div>
+          ) : (
+            <div style={{ minWidth: 260 }}>
+              <div style={{ fontWeight: 600, marginBottom: 8 }}>Add a question or concern for follow-up:</div>
+              <textarea
+                value={fupInput}
+                onChange={e => setFupInput(e.target.value)}
+                rows={4}
+                style={{ width: '100%', border: '1px solid #ccc', borderRadius: 4, padding: 8, marginBottom: 8 }}
+              />
+              {fupError && <div style={{ color: 'red', marginBottom: 8 }}>{fupError}</div>}
+              <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+                <Button onClick={handleFupSave} variant="contained" color="primary" size="small">Save</Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setFupModalOpen(false)}>Close</Button>
+        </DialogActions>
+      </Dialog>
     </div>
   );
 }

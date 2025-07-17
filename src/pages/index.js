@@ -1,7 +1,7 @@
 // pages/index.js
 import { useState, useEffect, useContext, useCallback } from 'react';
 import { getAuth, signInAnonymously, onAuthStateChanged, signOut, setPersistence, browserSessionPersistence } from 'firebase/auth';
-import { getFirestore, collection, doc, setDoc, onSnapshot, query, deleteDoc, updateDoc, writeBatch, getDocs, collectionGroup } from 'firebase/firestore'; // Added collectionGroup
+import { getFirestore, collection, doc, setDoc, onSnapshot, query, deleteDoc, updateDoc, writeBatch, getDocs, collectionGroup, where } from 'firebase/firestore'; // Added collectionGroup
 import Layout from '../components/Layout';
 import AttributeForm from '../components/AttributeForm';
 import { Modal } from '../components/Modal'; // Import Modal
@@ -9,6 +9,8 @@ import { ConfirmModal } from '../components/ConfirmModal'; // Import ConfirmModa
 import { FirebaseContext } from '../lib/FirebaseContext'; // Import the centralized context
 import { useRouter } from 'next/router';
 import { ALLOWED_EDITORS } from '../lib/allowedEditors';
+import Box from '@mui/material/Box';
+import Typography from '@mui/material/Typography';
 
 export default function Home() {
   const firebaseApp = useContext(FirebaseContext);
@@ -44,6 +46,9 @@ export default function Home() {
 
   // Add state for access denied
   const [accessDenied, setAccessDenied] = useState(false);
+
+  // Add state to track FUP counts per subprocess
+  const [subProcessFupCounts, setSubProcessFupCounts] = useState({}); // { [subProcessId]: count }
 
   // --- Firebase Authentication Effect ---
   useEffect(() => {
@@ -218,6 +223,31 @@ export default function Home() {
 
     return () => unsubscribeSubProcesses();
   }, [db, currentUser?.uid, activeProcessTitleId, selectedSubProcess, firebaseApp.options.appId, processTitles]); // Added processTitles to dependencies
+
+  // Move FUP count fetching logic into a function
+  const refreshFupCounts = async () => {
+    if (!db || !activeProcessTitleId || !subProcesses[activeProcessTitleId]) return;
+    const subProcessIds = (subProcesses[activeProcessTitleId] || []).map(sp => sp.id);
+    if (subProcessIds.length === 0) return;
+    const q = query(
+      collection(db, 'AttributeFUP'),
+      where('processId', '==', activeProcessTitleId)
+    );
+    const snapshot = await getDocs(q);
+    const counts = {};
+    snapshot.forEach(docSnap => {
+      const d = docSnap.data();
+      if (d.subProcessId && d.status === 'open') {
+        counts[d.subProcessId] = (counts[d.subProcessId] || 0) + 1;
+      }
+    });
+    setSubProcessFupCounts(counts);
+  };
+
+  // Call refreshFupCounts in the effect
+  useEffect(() => {
+    refreshFupCounts();
+  }, [db, activeProcessTitleId, subProcesses]);
 
   // --- Handlers for Process Titles ---
   const handleAddProcessTitle = async (name, dependsOn, seq) => {
@@ -404,12 +434,28 @@ export default function Home() {
         dependsOn: updatedSubProcess.dependsOn || null // Preserve dependency
       });
       console.log("Sub-process attributes updated:", updatedSubProcess.name);
-      alert(`Changes for "${updatedSubProcess.name}" saved!`);
+      // Update the subprocess in the local list
+      setSubProcesses(prev => {
+        const updatedList = (prev[activeProcessTitleId] || []).map(sp =>
+          sp.id === updatedSubProcess.id
+            ? { ...sp, attributes: JSON.parse(JSON.stringify(updatedSubProcess.attributes)) }
+            : sp
+        );
+        return { ...prev, [activeProcessTitleId]: updatedList };
+      });
+      // Update the selected subprocess if needed
+      if (selectedSubProcess && selectedSubProcess.id === updatedSubProcess.id) {
+        setSelectedSubProcess({
+          ...selectedSubProcess,
+          attributes: JSON.parse(JSON.stringify(updatedSubProcess.attributes))
+        });
+      }
+      // alert(`Changes for "${updatedSubProcess.name}" saved!`); // Removed alert, notification handled in UI
     } catch (e) {
       console.error("Error updating sub-process attributes: ", e);
       alert("Error saving sub-process attributes.");
     }
-  }, [db, currentUser?.uid, activeProcessTitleId, firebaseApp.options.appId, processTitles]);
+  }, [db, currentUser?.uid, activeProcessTitleId, firebaseApp.options.appId, processTitles, selectedSubProcess]);
 
   const handleLogout = async () => {
     if (auth) {
@@ -556,7 +602,22 @@ export default function Home() {
                     >
                       <div className="flex items-center flex-grow">
                         <span className="text-sm text-gray-500 font-mono mr-2 min-w-[2rem]">{sp.seq || 1} →</span>
-                        <span className={`${selectedSubProcess?.id === sp.id ? 'text-blue-800' : 'text-gray-800'} font-semibold`}>{sp.name}</span>
+                        <span className={`${selectedSubProcess?.id === sp.id ? 'text-blue-800' : 'text-gray-800'} font-semibold`}>
+                          {sp.name}
+                          {subProcessFupCounts[sp.id] ? (
+                            <Box component="span" sx={{ display: 'inline-flex', alignItems: 'center', ml: 1 }}>
+                              <svg width="14" height="14" viewBox="0 0 18 18" style={{ display: 'inline', verticalAlign: 'middle', marginRight: 2 }}>
+                                <rect x="3" y="3" width="2" height="12" rx="1" fill="#b91c1c" />
+                                <polygon points="5,3 14,6 5,9" fill="#b91c1c" />
+                              </svg>
+                              {subProcessFupCounts[sp.id] > 1 && (
+                                <Typography component="span" sx={{ ml: 0.5, fontWeight: 400, color: '#b91c1c', fontSize: '0.95em' }}>
+                                  ({subProcessFupCounts[sp.id]})
+                                </Typography>
+                              )}
+                            </Box>
+                          ) : null}
+                        </span>
                       </div>
                       <div className="flex-shrink-0 flex items-center space-x-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
                         <button
@@ -590,7 +651,7 @@ export default function Home() {
                 {selectedSubProcess ? `Attributes for: ${selectedSubProcess.name}` : 'Select a Sub-process'}
               </h3>
               {selectedSubProcess ? (
-                <AttributeForm subProcess={selectedSubProcess} onSave={handleUpdateSubProcessAttributes} />
+                <AttributeForm subProcess={{ ...selectedSubProcess, processId: activeProcessTitleId }} onSave={handleUpdateSubProcessAttributes} onFupChanged={refreshFupCounts} />
               ) : (
                 <p className="text-gray-500 italic">Click a sub-process to view and edit its attributes.</p>
               )}
