@@ -57,29 +57,29 @@ export default function Home() {
       ]);
       setSubProcesses({
         "PT_BOOKING": [
-          { id: "P_01", name: "Patient consults with RO", attributes: { role: ["RO"], output: ["eBAF (initial)"], description: "Initial consultation with Radiation Oncologist." } },
-          { id: "P_02", name: "RO completes eBAF during consult", attributes: { role: ["RO"], input: ["eBAF (initial)"], output: ["eBAF (completed)"], system: ["Paper/Digital Form"] } },
-          { id: "P_03", name: "Clerk books CT appt", attributes: { role: ["Clerk"], input: ["eBAF (completed)"], output: ["CT Appt (booked)"], system: ["Cerner"] } },
-          { id: "P_04", name: "Enter CT SIM appt details into ARIA", attributes: { system: ["ARIA"], input: ["CT Appt (booked)"], document: ["CT SIM Appt Details"] } },
-          { id: "P_05", name: "CT therapist reviews patient info from EBAF in Cerner", attributes: { role: ["CT Therapist"], system: ["Cerner"], input: ["eBAF (completed)"] } },
-          { id: "P_06", name: "Patient CT SIM and 10 initial treatment appts. booked", attributes: { status: ["Completed"], output: ["Initial Treatment Schedule"] } },
+          { id: "P_01", name: "Patient consults with RO", seq: 1, attributes: { role: ["RO"], output: ["eBAF (initial)"], description: "Initial consultation with Radiation Oncologist." } },
+          { id: "P_02", name: "RO completes eBAF during consult", seq: 2, attributes: { role: ["RO"], input: ["eBAF (initial)"], output: ["eBAF (completed)"], system: ["Paper/Digital Form"] } },
+          { id: "P_03", name: "Clerk books CT appt", seq: 3, attributes: { role: ["Clerk"], input: ["eBAF (completed)"], output: ["CT Appt (booked)"], system: ["Cerner"] } },
+          { id: "P_04", name: "Enter CT SIM appt details into ARIA", seq: 4, attributes: { system: ["ARIA"], input: ["CT Appt (booked)"], document: ["CT SIM Appt Details"] } },
+          { id: "P_05", name: "CT therapist reviews patient info from EBAF in Cerner", seq: 5, attributes: { role: ["CT Therapist"], system: ["Cerner"], input: ["eBAF (completed)"] } },
+          { id: "P_06", name: "Patient CT SIM and 10 initial treatment appts. booked", seq: 6, attributes: { status: ["Completed"], output: ["Initial Treatment Schedule"] } },
         ],
         "PT_CT_SIM": [
-          { id: "P_07", name: "CT therapist reviews next day CT schedule and EBAF in Cerner", attributes: { role: ["CT Therapist"], system: ["Cerner"], input: ["Next Day CT Schedule", "eBAF"] } },
-          { id: "P_08", name: "Review patient demographics, RTT dates, disease codes, RO in ARIA", attributes: { system: ["ARIA"], role: ["CT Therapist", "RO"], input: ["Patient Demographics"] } },
-          { id: "P_09", name: "Assign care path template in ARIA to patient", attributes: { system: ["ARIA"], output: ["Care Path Template"] } },
-          { id: "P_10", name: "Enter patient info in RTP Dosimetry Tracking System", attributes: { system: ["RTP Dosimetry Tracking System"], input: ["Patient Info"] } },
-          { id: "P_11", name: "Enter Patient info into CT Scanner Phillips System", attributes: { system: ["CT Scanner Phillips System"], input: ["Patient Info"] } },
-          { id: "P_12", name: "Document the contrast provided as a journal note", attributes: { document: ["Journal Note (Contrast)"], role: ["CT Therapist"] } },
-          { id: "P_13", name: "Booking clerk checks patient in for CT SIM", attributes: { role: ["Booking Clerk"], status: ["Patient Checked In"] } },
-          { id: "P_14", name: "Complete CT checklist in ARIA", attributes: { system: ["ARIA"], document: ["CT Checklist"], role: ["CT Therapist"] } },
-          { id: "P_15", name: "Scan patient", attributes: { equipment: ["CT Scanner"], output: ["CT Scan Images"] } },
-          { id: "P_16", name: "Indicate set-up instructions in ARIA document", attributes: { system: ["ARIA"], document: ["Set-up Instructions"], role: ["CT Therapist"] } },
-          { id: "P_17", name: "Save loc sheet as document in ARIA", attributes: { system: ["ARIA"], document: ["Loc Sheet"], role: ["CT Therapist"] } },
-          { id: "P_18", name: "Document any journal notes in ARIA", attributes: { system: ["ARIA"], document: ["Journal Notes"], role: ["CT Therapist"] } },
-          { id: "P_19", name: "Complete 'CT' appointment in ARIA", attributes: { system: ["ARIA"], status: ["CT Appt Completed"] } },
-          { id: "P_20", name: "'Pre-RO' task in ARIA is initiated", attributes: { system: ["ARIA"], role: ["RO"] } },
-          { id: "P_21", name: "Booking clerk schedules the remainder of treatment appts.", attributes: { role: ["Booking Clerk"], output: ["Full Treatment Schedule"] } },
+          { id: "P_07", name: "CT therapist reviews next day CT schedule and EBAF in Cerner", seq: 1, attributes: { role: ["CT Therapist"], system: ["Cerner"], input: ["Next Day CT Schedule", "eBAF"] } },
+          { id: "P_08", name: "Review patient demographics, RTT dates, disease codes, RO in ARIA", seq: 2, attributes: { system: ["ARIA"], role: ["CT Therapist", "RO"], input: ["Patient Demographics"] } },
+          { id: "P_09", name: "Assign care path template in ARIA to patient", seq: 3, attributes: { system: ["ARIA"], output: ["Care Path Template"] } },
+          { id: "P_10", name: "Enter patient info in RTP Dosimetry Tracking System", seq: 4, attributes: { system: ["RTP Dosimetry Tracking System"], input: ["Patient Info"] } },
+          { id: "P_11", name: "Enter Patient info into CT Scanner Phillips System", seq: 5, attributes: { system: ["CT Scanner Phillips System"], input: ["Patient Info"] } },
+          { id: "P_12", name: "Document the contrast provided as a journal note", seq: 6, attributes: { document: ["Journal Note (Contrast)"], role: ["CT Therapist"] } },
+          { id: "P_13", name: "Booking clerk checks patient in for CT SIM", seq: 7, attributes: { role: ["Booking Clerk"], status: ["Patient Checked In"] } },
+          { id: "P_14", name: "Complete CT checklist in ARIA", seq: 8, attributes: { system: ["ARIA"], document: ["CT Checklist"], role: ["CT Therapist"] } },
+          { id: "P_15", name: "Scan patient", seq: 9, attributes: { equipment: ["CT Scanner"], output: ["CT Scan Images"] } },
+          { id: "P_16", name: "Indicate set-up instructions in ARIA document", seq: 10, attributes: { system: ["ARIA"], document: ["Set-up Instructions"], role: ["CT Therapist"] } },
+          { id: "P_17", name: "Save loc sheet as document in ARIA", seq: 11, attributes: { system: ["ARIA"], document: ["Loc Sheet"], role: ["CT Therapist"] } },
+          { id: "P_18", name: "Document any journal notes in ARIA", seq: 12, attributes: { system: ["ARIA"], document: ["Journal Notes"], role: ["CT Therapist"] } },
+          { id: "P_19", name: "Complete 'CT' appointment in ARIA", seq: 13, attributes: { system: ["ARIA"], status: ["CT Appt Completed"] } },
+          { id: "P_20", name: "'Pre-RO' task in ARIA is initiated", seq: 14, attributes: { system: ["ARIA"], role: ["RO"] } },
+          { id: "P_21", name: "Booking clerk schedules the remainder of treatment appts.", seq: 15, attributes: { role: ["Booking Clerk"], output: ["Full Treatment Schedule"] } },
         ]
       });
       setLoadingData(false);
@@ -186,7 +186,15 @@ export default function Home() {
     const subProcessesRef = collection(db, `artifacts/${firebaseApp.options.appId}/users/${processTitleOwnerUserId}/processTitles/${activeProcessTitleId}/subProcesses`);
     const unsubscribeSubProcesses = onSnapshot(query(subProcessesRef), (snapshot) => {
       const fetchedSubProcesses = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      fetchedSubProcesses.sort((a, b) => a.name.localeCompare(b.name));
+      // Sort by sequence number, then by name as fallback
+      fetchedSubProcesses.sort((a, b) => {
+        const seqA = a.seq || 999; // Default to high number if no seq
+        const seqB = b.seq || 999;
+        if (seqA !== seqB) {
+          return seqA - seqB;
+        }
+        return a.name.localeCompare(b.name);
+      });
       setSubProcesses(prev => ({ ...prev, [activeProcessTitleId]: fetchedSubProcesses }));
       setLoadingData(false);
 
@@ -232,12 +240,12 @@ export default function Home() {
     }
     // Find the userId owner of this process title
     const processTitleOwnerUserId = processTitles.find(pt => pt.id === id)?.userId;
-    if (!processTitleOwnerUserId || processTitleOwnerUserId !== currentUser?.uid) {
-        alert("You can only edit process titles you created.");
-        return;
+    if (!processTitleOwnerUserId) {
+      alert("Process title not found.");
+      return;
     }
     try {
-      await updateDoc(doc(db, `artifacts/${firebaseApp.options.appId}/users/${currentUser?.uid}/processTitles`, id), {
+      await updateDoc(doc(db, `artifacts/${firebaseApp.options.appId}/users/${processTitleOwnerUserId}/processTitles`, id), {
         name: newName,
         dependsOn: newDependsOn || null
       });
@@ -258,13 +266,13 @@ export default function Home() {
     }
     // Find the userId owner of this process title
     const processTitleOwnerUserId = processTitles.find(pt => pt.id === id)?.userId;
-    if (!processTitleOwnerUserId || processTitleOwnerUserId !== currentUser?.uid) {
-        alert("You can only delete process titles you created.");
-        return;
+    if (!processTitleOwnerUserId) {
+      alert("Process title not found.");
+      return;
     }
     try {
       // Delete all sub-processes first (more complex, requires fetching them)
-      const subProcessesCollectionRef = collection(db, `artifacts/${firebaseApp.options.appId}/users/${currentUser?.uid}/processTitles/${id}/subProcesses`);
+      const subProcessesCollectionRef = collection(db, `artifacts/${firebaseApp.options.appId}/users/${processTitleOwnerUserId}/processTitles/${id}/subProcesses`);
       const subProcessDocs = await getDocs(query(subProcessesCollectionRef));
       const batch = writeBatch(db);
       subProcessDocs.forEach((subDoc) => {
@@ -273,7 +281,7 @@ export default function Home() {
       await batch.commit();
 
       // Then delete the process title document itself
-      await deleteDoc(doc(db, `artifacts/${firebaseApp.options.appId}/users/${currentUser?.uid}/processTitles`, id));
+      await deleteDoc(doc(db, `artifacts/${firebaseApp.options.appId}/users/${processTitleOwnerUserId}/processTitles`, id));
       console.log(`Process title ${id} and its sub-processes deleted.`);
       // If the deleted tab was active, switch to the first available tab
       if (activeProcessTitleId === id) {
@@ -289,21 +297,25 @@ export default function Home() {
   };
 
   // --- Handlers for Sub-processes ---
-  const handleAddSubProcess = async (name, dependsOn) => {
+  const handleAddSubProcess = async (name, dependsOn, seq) => {
     if (!db || !currentUser?.uid || !activeProcessTitleId) {
       alert("Please select a Process Title first or configure Firebase.");
       return;
     }
-    // Ensure sub-process is added under the owner of the active process title
+    // Find the userId owner of the active process title
     const processTitleOwnerUserId = processTitles.find(pt => pt.id === activeProcessTitleId)?.userId;
-    if (!processTitleOwnerUserId || processTitleOwnerUserId !== currentUser?.uid) {
-        alert("You can only add sub-processes to process titles you created.");
-        return;
+    if (!processTitleOwnerUserId) {
+      alert("Process title not found.");
+      return;
     }
-
     const newId = `SP_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
     try {
-      await setDoc(doc(db, `artifacts/${firebaseApp.options.appId}/users/${currentUser?.uid}/processTitles/${activeProcessTitleId}/subProcesses`, newId), { name, attributes: {}, dependsOn: dependsOn || null });
+      await setDoc(doc(db, `artifacts/${firebaseApp.options.appId}/users/${processTitleOwnerUserId}/processTitles/${activeProcessTitleId}/subProcesses`, newId), { 
+        name, 
+        attributes: {}, 
+        dependsOn: dependsOn || null,
+        seq: seq || 1
+      });
       console.log("Sub-process added:", name);
     } catch (e) {
       console.error("Error adding sub-process: ", e);
@@ -311,20 +323,21 @@ export default function Home() {
     }
   };
 
-  const handleEditSubProcess = async (id, newName) => {
+  const handleEditSubProcess = async (id, newName, newSeq) => {
     if (!db || !currentUser?.uid || !activeProcessTitleId) {
       alert("Database not ready. Please wait for authentication or configure Firebase.");
       return;
     }
-    // Ensure sub-process is edited under the owner of its parent process title
+    // Find the userId owner of the active process title
     const processTitleOwnerUserId = processTitles.find(pt => pt.id === activeProcessTitleId)?.userId;
-    if (!processTitleOwnerUserId || processTitleOwnerUserId !== currentUser?.uid) {
-        alert("You can only edit sub-processes of process titles you created.");
-        return;
+    if (!processTitleOwnerUserId) {
+      alert("Process title not found.");
+      return;
     }
     try {
-      await updateDoc(doc(db, `artifacts/${firebaseApp.options.appId}/users/${currentUser?.uid}/processTitles/${activeProcessTitleId}/subProcesses`, id), {
-        name: newName
+      await updateDoc(doc(db, `artifacts/${firebaseApp.options.appId}/users/${processTitleOwnerUserId}/processTitles/${activeProcessTitleId}/subProcesses`, id), {
+        name: newName,
+        seq: newSeq || 1
       });
       console.log(`Sub-process ${newName} updated.`);
     } catch (e) {
@@ -341,14 +354,14 @@ export default function Home() {
       alert("Database not ready. Please wait for authentication or configure Firebase.");
       return;
     }
-    // Ensure sub-process is deleted under the owner of its parent process title
+    // Find the userId owner of the active process title
     const processTitleOwnerUserId = processTitles.find(pt => pt.id === activeProcessTitleId)?.userId;
-    if (!processTitleOwnerUserId || processTitleOwnerUserId !== currentUser?.uid) {
-        alert("You can only delete sub-processes of process titles you created.");
-        return;
+    if (!processTitleOwnerUserId) {
+      alert("Process title not found.");
+      return;
     }
     try {
-      await deleteDoc(doc(db, `artifacts/${firebaseApp.options.appId}/users/${currentUser?.uid}/processTitles/${activeProcessTitleId}/subProcesses`, id));
+      await deleteDoc(doc(db, `artifacts/${firebaseApp.options.appId}/users/${processTitleOwnerUserId}/processTitles/${activeProcessTitleId}/subProcesses`, id));
       console.log(`Sub-process ${id} deleted.`);
       // If the deleted sub-process was selected, deselect it
       if (selectedSubProcess && selectedSubProcess.id === id) {
@@ -368,16 +381,18 @@ export default function Home() {
       alert("Cannot save: Database not ready, no sub-process selected, or Firebase not configured.");
       return;
     }
-    // Ensure attributes are updated under the owner of its parent process title
+    // Find the userId owner of the active process title
     const processTitleOwnerUserId = processTitles.find(pt => pt.id === activeProcessTitleId)?.userId;
-    if (!processTitleOwnerUserId || processTitleOwnerUserId !== currentUser?.uid) {
-        alert("You can only update attributes of sub-processes you created.");
-        return;
+    if (!processTitleOwnerUserId) {
+      alert("Process title not found.");
+      return;
     }
     try {
-      await setDoc(doc(db, `artifacts/${firebaseApp.options.appId}/users/${currentUser?.uid}/processTitles/${activeProcessTitleId}/subProcesses`, updatedSubProcess.id), {
+      await setDoc(doc(db, `artifacts/${firebaseApp.options.appId}/users/${processTitleOwnerUserId}/processTitles/${activeProcessTitleId}/subProcesses`, updatedSubProcess.id), {
         name: updatedSubProcess.name, // Ensure name is also saved if it was passed in the updated object
-        attributes: JSON.parse(JSON.stringify(updatedSubProcess.attributes)) // Deep copy to ensure no mutation issues
+        attributes: JSON.parse(JSON.stringify(updatedSubProcess.attributes)), // Deep copy to ensure no mutation issues
+        seq: updatedSubProcess.seq || 1, // Preserve sequence number
+        dependsOn: updatedSubProcess.dependsOn || null // Preserve dependency
       });
       console.log("Sub-process attributes updated:", updatedSubProcess.name);
       alert(`Changes for "${updatedSubProcess.name}" saved!`);
@@ -529,7 +544,10 @@ export default function Home() {
                       }`}
                       onClick={() => setSelectedSubProcess(sp)}
                     >
-                      <span className={`flex-grow ${selectedSubProcess?.id === sp.id ? 'text-blue-800' : 'text-gray-800'} font-semibold`}>{sp.name}</span>
+                      <div className="flex items-center flex-grow">
+                        <span className="text-sm text-gray-500 font-mono mr-2 min-w-[2rem]">→ {sp.seq || 1}</span>
+                        <span className={`${selectedSubProcess?.id === sp.id ? 'text-blue-800' : 'text-gray-800'} font-semibold`}>{sp.name}</span>
+                      </div>
                       <div className="flex-shrink-0 flex items-center space-x-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
                         <button
                           className="p-1 rounded-full text-gray-500 hover:bg-gray-200"
@@ -614,11 +632,14 @@ export default function Home() {
           <Modal
             title="Edit Sub-process"
             onClose={() => { setIsEditSubProcessModalOpen(false); setSubProcessToEdit(null); }}
-            onConfirm={async (newName) => {
-              await handleEditSubProcess(subProcessToEdit.id, newName);
+            onConfirm={async (newName, dependsOn, newSeq) => {
+              await handleEditSubProcess(subProcessToEdit.id, newName, newSeq);
             }}
             initialName={subProcessToEdit.name}
+            initialDependency={subProcessToEdit.dependsOn}
+            initialSeq={subProcessToEdit.seq || 1}
             isSubProcess={true} // Indicate it's a sub-process edit
+            subProcesses={(subProcesses[activeProcessTitleId] || [])}
           />
         )}
 
@@ -637,12 +658,13 @@ export default function Home() {
           <Modal
             title="Add Sub-process"
             onClose={() => { setIsAddSubProcessModalOpen(false); setSubProcessNameInput(""); }}
-            onConfirm={async (name, dependsOn) => {
-              await handleAddSubProcess(name, dependsOn);
+            onConfirm={async (name, dependsOn, seq) => {
+              await handleAddSubProcess(name, dependsOn, seq);
               setIsAddSubProcessModalOpen(false);
               setSubProcessNameInput("");
             }}
             initialName={subProcessNameInput}
+            initialSeq={1}
             isSubProcess={true}
             subProcesses={(subProcesses[activeProcessTitleId] || [])}
           />

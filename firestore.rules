@@ -1,0 +1,36 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Helper function to check if user is in allowed editors list
+    function isAllowedEditor() {
+      return request.auth != null && 
+             request.auth.token.email in [
+               'runnerbrain@gmail.com',
+               'editor2@gmail.com', 
+               'samra.nasser@gmail.com',
+               'ali.akkila@gmail.com'
+             ];
+    }
+
+    // Rule 1: Allows any authenticated user from allowed editors to read/write ALL data
+    // This removes the user-specific restrictions and allows collaboration
+    match /artifacts/{appId}/users/{userId}/{document=**} {
+      allow read, write: if isAllowedEditor();
+    }
+
+    // Rule 2: Allows allowed editors to read/write attributeNames
+    match /attributeNames/{docId} {
+      allow read, write: if isAllowedEditor();
+    }
+
+    // Rule 3: Allows allowed editors to read/write processTitles collection group
+    match /{path=**}/processTitles/{processTitleId} {
+      allow read, write: if isAllowedEditor();
+    }
+
+    // Rule 4: Allows allowed editors to read/write subProcesses collection group  
+    match /{path=**}/subProcesses/{subProcessId} {
+      allow read, write: if isAllowedEditor();
+    }
+  }
+} 

@@ -1,14 +1,16 @@
 // components/Modal.js
 import { useState, useEffect } from 'react';
 
-export function Modal({ title, onClose, onConfirm, initialName = '', initialDependency = '', processTitles = [], subProcesses = [], isSubProcess = false }) {
+export function Modal({ title, onClose, onConfirm, initialName = '', initialDependency = '', initialSeq = 1, processTitles = [], subProcesses = [], isSubProcess = false }) {
   const [name, setName] = useState(initialName);
   const [dependency, setDependency] = useState(initialDependency);
+  const [seq, setSeq] = useState(initialSeq);
 
   useEffect(() => {
     setName(initialName);
     setDependency(initialDependency);
-  }, [initialName, initialDependency]);
+    setSeq(initialSeq);
+  }, [initialName, initialDependency, initialSeq]);
 
   const handleConfirm = () => {
     if (!name.trim()) {
@@ -16,7 +18,7 @@ export function Modal({ title, onClose, onConfirm, initialName = '', initialDepe
       return;
     }
     if (isSubProcess) {
-      onConfirm(name, dependency); // Pass dependency for sub-process
+      onConfirm(name, dependency, seq); // Pass dependency and seq for sub-process
     } else {
       onConfirm(name, dependency); // Name and dependency for process title
     }
@@ -43,6 +45,21 @@ export function Modal({ title, onClose, onConfirm, initialName = '', initialDepe
           value={name}
           onChange={(e) => setName(e.target.value)}
         />
+
+        {/* Sequence number input for sub-processes */}
+        {isSubProcess && (
+          <>
+            <label htmlFor="seq-input" className="block text-sm font-medium text-gray-700 mb-1">Sequence Number:</label>
+            <input
+              type="number"
+              id="seq-input"
+              className="w-full p-2 border border-gray-300 rounded-md mb-4"
+              value={seq}
+              onChange={(e) => setSeq(parseInt(e.target.value) || 1)}
+              min="1"
+            />
+          </>
+        )}
 
         {/* Dependency dropdown for process titles and sub-processes */}
         {(!isSubProcess && processTitles.length > 0) && (
