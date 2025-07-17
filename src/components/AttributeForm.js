@@ -4,6 +4,9 @@ import {FirebaseContext} from '../lib/FirebaseContext'; // Import the centralize
 import styles from './AttributeForm.module.css'; // Import the styles module
 import { collection, getDocs, setDoc, doc } from 'firebase/firestore';
 import ReactMarkdown from 'react-markdown'; // You need to install this: npm install react-markdown
+import TextField from '@mui/material/TextField';
+import Select from '@mui/material/Select';
+import MenuItem from '@mui/material/MenuItem';
 
 // --- AUTOSUGGEST DROPDOWN COMPONENT ---
 function AttributeNameAutosuggest({ value, onChange, suggestions, onSuggestionSelect, inputProps }) {
@@ -409,73 +412,55 @@ export default function AttributeForm({ subProcess, onSave }) {
       )}
       <h4 className="text-md font-bold mb-2 text-gray-800">{editKey ? 'Edit Attribute' : 'Add New Attribute'}</h4>
       <div className="space-y-2 mb-6">
-        <AttributeNameAutosuggest
+        <TextField
+          label="Attribute Name"
+          variant="outlined"
+          size="small"
           value={newAttributeKey}
-          onChange={val => {
-            setNewAttributeKey(val);
-            // If suggestion matches, auto-select type
-            const match = attributeNameSuggestions.find(s => s.name === val);
-            if (match) setNewAttributeType(match.type);
-          }}
-          suggestions={attributeNameSuggestions}
-          onSuggestionSelect={s => {
-            setNewAttributeKey(s.name);
-            setNewAttributeType(s.type);
-          }}
-          inputProps={{
-            type: 'text',
-            placeholder: 'Attribute Name',
-            className: 'w-full p-2 border border-gray-300 rounded-md',
-          }}
+          onChange={e => setNewAttributeKey(e.target.value)}
+          style={{ marginBottom: 8 }}
+          fullWidth
         />
         {/* Flex row for type and value */}
         <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-          <select
+          <Select
             value={newAttributeType}
             onChange={e => setNewAttributeType(e.target.value)}
-            className="p-2 border border-gray-300 rounded-md"
-            style={{ minWidth: 110, flex: '0 0 auto' }}
+            variant="outlined"
+            size="small"
+            style={{ marginBottom: 8, width: 90 }}
           >
-            <option value="string">String</option>
-            <option value="number">Number</option>
-            <option value="boolean">Boolean</option>
-            <option value="object">Object</option>
-            <option value="array">Array</option>
-            <option value="rtf">RTF (Markdown)</option>
-          </select>
+            <MenuItem value="string">String</MenuItem>
+            <MenuItem value="number">Number</MenuItem>
+            <MenuItem value="boolean">Boolean</MenuItem>
+            <MenuItem value="object">Object</MenuItem>
+            <MenuItem value="array">Array</MenuItem>
+            <MenuItem value="rtf">RTF</MenuItem>
+          </Select>
           {/* Value input (object type gets a subform) */}
           {newAttributeType === 'object' ? (
             <div style={{ flex: 1 }}>
               {objectFields.map((pair, idx) => (
                 <div key={idx} style={{ marginBottom: 8, padding: 8, border: '1px solid #e5e7eb', borderRadius: 6 }}>
-                  <div style={{ display: 'flex', gap: '0.25rem', marginBottom: 4 }}>
-                    {/* --- Nested attribute key with autosuggest --- */}
-                    <AttributeNameAutosuggest
+                  <div style={{ display: 'flex', gap: '0.5rem', marginBottom: 4, alignItems: 'center' }}>
+                    {/* --- Key field as MUI TextField --- */}
+                    <TextField
+                      label="Key"
+                      variant="outlined"
+                      size="small"
                       value={pair.key}
-                      onChange={val => {
+                      onChange={e => {
                         const updated = [...objectFields];
-                        updated[idx].key = val;
+                        updated[idx].key = e.target.value;
                         // If suggestion matches, auto-select type
-                        const match = attributeNameSuggestions.find(s => s.name === val);
+                        const match = attributeNameSuggestions.find(s => s.name === e.target.value);
                         if (match) updated[idx].type = match.type;
                         setObjectFields(updated);
                       }}
-                      suggestions={attributeNameSuggestions}
-                      onSuggestionSelect={s => {
-                        const updated = [...objectFields];
-                        updated[idx].key = s.name;
-                        updated[idx].type = s.type;
-                        setObjectFields(updated);
-                      }}
-                      inputProps={{
-                        type: 'text',
-                        placeholder: 'Key',
-                        className: 'p-1 border border-gray-300 rounded-md',
-                        style: { width: '30%' },
-                      }}
+                      style={{ flex: 1, minWidth: 120 }}
                     />
-                    {/* --- End nested autosuggest --- */}
-                    <select
+                    {/* --- Type field as MUI Select --- */}
+                    <Select
                       value={pair.type}
                       onChange={e => {
                         const updated = [...objectFields];
@@ -491,71 +476,100 @@ export default function AttributeForm({ subProcess, onSave }) {
                         }
                         setObjectFields(updated);
                       }}
-                      className="p-1 border border-gray-300 rounded-md"
-                      style={{ width: '25%' }}
+                      variant="outlined"
+                      size="small"
+                      style={{ width: 90 }}
                     >
-                      <option value="string">String</option>
-                      <option value="number">Number</option>
-                      <option value="boolean">Boolean</option>
-                      <option value="object">Object</option>
-                      <option value="array">Array</option>
-                    </select>
-                    {/* Value input based on type */}
+                      <MenuItem value="string">String</MenuItem>
+                      <MenuItem value="number">Number</MenuItem>
+                      <MenuItem value="boolean">Boolean</MenuItem>
+                      <MenuItem value="object">Object</MenuItem>
+                      <MenuItem value="array">Array</MenuItem>
+                    </Select>
+                    {/* Value input based on type as MUI TextField/Select */}
                     {pair.type === 'boolean' ? (
-                      <select
+                      <Select
                         value={String(pair.value)}
                         onChange={e => {
                           const updated = [...objectFields];
                           updated[idx].value = e.target.value === 'true';
                           setObjectFields(updated);
                         }}
-                        className="p-1 border border-gray-300 rounded-md"
-                        style={{ width: '35%' }}
+                        variant="outlined"
+                        size="small"
+                        style={{ flex: 2, minWidth: 120 }}
                       >
-                        <option value="true">True</option>
-                        <option value="false">False</option>
-                      </select>
+                        <MenuItem value="true">True</MenuItem>
+                        <MenuItem value="false">False</MenuItem>
+                      </Select>
                     ) : pair.type === 'object' ? (
-                      <div style={{ width: '35%' }}>
-                        {/* Nested object fields */}
+                      <div style={{ flex: 2, minWidth: 180 }}>
+                        {/* Nested object fields (max 2 levels) */}
                         {pair.nestedFields && pair.nestedFields.map((nestedPair, nestedIdx) => (
-                          <div key={nestedIdx} style={{ display: 'flex', gap: '0.25rem', marginBottom: 2 }}>
-                            <AttributeNameAutosuggest
+                          <div key={nestedIdx} style={{ display: 'flex', gap: '0.5rem', marginBottom: 16, alignItems: 'center' }}>
+                            <TextField
+                              label="Nested Key"
+                              variant="outlined"
+                              size="small"
                               value={nestedPair.key}
-                              onChange={val => {
-                                const updated = [...objectFields];
-                                updated[idx].nestedFields[nestedIdx].key = val;
-                                // If suggestion matches, auto-select type
-                                const match = attributeNameSuggestions.find(s => s.name === val);
-                                if (match) updated[idx].nestedFields[nestedIdx].type = match.type;
-                                setObjectFields(updated);
-                              }}
-                              suggestions={attributeNameSuggestions}
-                              onSuggestionSelect={s => {
-                                const updated = [...objectFields];
-                                updated[idx].nestedFields[nestedIdx].key = s.name;
-                                updated[idx].nestedFields[nestedIdx].type = s.type;
-                                setObjectFields(updated);
-                              }}
-                              inputProps={{
-                                type: 'text',
-                                placeholder: 'Nested Key',
-                                className: 'p-1 border border-gray-300 rounded-md',
-                                style: { width: '40%' },
-                              }}
-                            />
-                            <input
-                              type="text"
-                              placeholder="Nested Value"
-                              value={nestedPair.value}
                               onChange={e => {
                                 const updated = [...objectFields];
-                                updated[idx].nestedFields[nestedIdx].value = e.target.value;
+                                updated[idx].nestedFields[nestedIdx].key = e.target.value;
                                 setObjectFields(updated);
                               }}
-                              className="p-1 border border-gray-300 rounded-md"
-                              style={{ width: '50%' }}
+                              style={{ flex: 1, minWidth: 90 }}
                             />
+                            <Select
+                              value={nestedPair.type || 'string'}
+                              onChange={e => {
+                                const updated = [...objectFields];
+                                updated[idx].nestedFields[nestedIdx].type = e.target.value;
+                                // Reset value when type changes
+                                if (e.target.value === 'boolean') {
+                                  updated[idx].nestedFields[nestedIdx].value = false;
+                                } else {
+                                  updated[idx].nestedFields[nestedIdx].value = '';
+                                }
+                                setObjectFields(updated);
+                              }}
+                              variant="outlined"
+                              size="small"
+                              style={{ width: 90 }}
+                            >
+                              <MenuItem value="string">String</MenuItem>
+                              <MenuItem value="number">Number</MenuItem>
+                              <MenuItem value="boolean">Boolean</MenuItem>
+                            </Select>
+                            {nestedPair.type === 'boolean' ? (
+                              <Select
+                                value={String(nestedPair.value)}
+                                onChange={e => {
+                                  const updated = [...objectFields];
+                                  updated[idx].nestedFields[nestedIdx].value = e.target.value === 'true';
+                                  setObjectFields(updated);
+                                }}
+                                variant="outlined"
+                                size="small"
+                                style={{ flex: 2, minWidth: 90 }}
+                              >
+                                <MenuItem value="true">True</MenuItem>
+                                <MenuItem value="false">False</MenuItem>
+                              </Select>
+                            ) : (
+                              <TextField
+                                label="Nested Value"
+                                variant="outlined"
+                                size="small"
+                                type={nestedPair.type === 'number' ? 'number' : 'text'}
+                                value={nestedPair.value}
+                                onChange={e => {
+                                  const updated = [...objectFields];
+                                  updated[idx].nestedFields[nestedIdx].value = e.target.value;
+                                  setObjectFields(updated);
+                                }}
+                                style={{ flex: 2, minWidth: 90 }}
+                              />
+                            )}
                             <button
                               type="button"
                               onClick={() => {
@@ -576,7 +590,7 @@ export default function AttributeForm({ subProcess, onSave }) {
                           onClick={() => {
                             const updated = [...objectFields];
                             if (!updated[idx].nestedFields) updated[idx].nestedFields = [];
-                            updated[idx].nestedFields.push({ key: '', value: '' });
+                            updated[idx].nestedFields.push({ key: '', value: '', type: 'string' });
                             setObjectFields(updated);
                           }}
                           className="bg-blue-200 hover:bg-blue-400 text-blue-800 rounded px-2 mt-1"
@@ -586,30 +600,31 @@ export default function AttributeForm({ subProcess, onSave }) {
                         </button>
                       </div>
                     ) : pair.type === 'array' ? (
-                      <input
-                        type="text"
-                        placeholder="Comma-separated values"
+                      <TextField
+                        label="Comma-separated values"
+                        variant="outlined"
+                        size="small"
                         value={Array.isArray(pair.value) ? pair.value.join(', ') : pair.value}
                         onChange={e => {
                           const updated = [...objectFields];
                           updated[idx].value = e.target.value;
                           setObjectFields(updated);
                         }}
-                        className="p-1 border border-gray-300 rounded-md"
-                        style={{ width: '35%' }}
+                        style={{ flex: 2, minWidth: 120 }}
                       />
                     ) : (
-                      <input
+                      <TextField
+                        label="Value"
+                        variant="outlined"
+                        size="small"
                         type={pair.type === 'number' ? 'number' : 'text'}
-                        placeholder="Value"
                         value={pair.value}
                         onChange={e => {
                           const updated = [...objectFields];
                           updated[idx].value = e.target.value;
                           setObjectFields(updated);
                         }}
-                        className="p-1 border border-gray-300 rounded-md"
-                        style={{ width: '35%' }}
+                        style={{ flex: 2, minWidth: 120 }}
                       />
                     )}
                     <button
@@ -633,52 +648,17 @@ export default function AttributeForm({ subProcess, onSave }) {
                 + Add Pair
               </button>
             </div>
-          ) : newAttributeType === 'rtf' ? (
-            <div style={{ flex: 1 }}>
-              <textarea
-                placeholder="Enter Markdown text (e.g. **bold**, - bullet)"
-                value={newAttributeValue}
-                onChange={e => setNewAttributeValue(e.target.value)}
-                className="p-2 border border-gray-300 rounded-md w-full"
-                rows={5}
-                style={{ fontFamily: 'monospace', marginBottom: 8 }}
-              />
-              <div style={{ background: '#f8fafc', border: '1px solid #e5e7eb', borderRadius: 6, padding: 8, marginTop: 4 }} className="markdown-preview">
-                <div style={{ fontWeight: 600, marginBottom: 4, color: '#555' }}>Preview:</div>
-                <ReactMarkdown
-                  components={{
-                    h1: ({node, ...props}) => <h1 className="text-2xl font-bold my-2" {...props} />,
-                    h2: ({node, ...props}) => <h2 className="text-xl font-bold my-2" {...props} />,
-                    h3: ({node, ...props}) => <h3 className="text-lg font-bold my-2" {...props} />,
-                    ul: ({node, ...props}) => <ul className="list-disc ml-6 my-2" {...props} />,
-                    ol: ({node, ...props}) => <ol className="list-decimal ml-6 my-2" {...props} />,
-                    li: ({node, ...props}) => <li className="mb-1" {...props} />,
-                    strong: ({node, ...props}) => <strong className="font-bold" {...props} />,
-                    p: ({node, ...props}) => <p className="my-1" {...props} />,
-                  }}
-                >
-                  {newAttributeValue}
-                </ReactMarkdown>
-              </div>
-            </div>
-          ) : newAttributeType === 'boolean' ? (
-            <select
-              value={String(newAttributeValue)}
-              onChange={e => setNewAttributeValue(e.target.value === 'true')}
-              className="p-2 border border-gray-300 rounded-md"
-              style={{ flex: 1 }}
-            >
-              <option value="true">True</option>
-              <option value="false">False</option>
-            </select>
           ) : (
-            <input
-              type={newAttributeType === 'number' ? 'number' : 'text'}
-              placeholder="Attribute Value"
+            <TextField
+              label="Attribute Value"
+              variant="outlined"
+              size="small"
               value={newAttributeValue}
-              onChange={(e) => setNewAttributeValue(e.target.value)}
-              className="p-2 border border-gray-300 rounded-md"
-              style={{ flex: 1 }}
+              onChange={e => setNewAttributeValue(e.target.value)}
+              style={{ marginBottom: 8 }}
+              multiline={newAttributeType === 'rtf' || newAttributeType === 'object'}
+              minRows={newAttributeType === 'rtf' || newAttributeType === 'object' ? 3 : 1}
+              fullWidth
             />
           )}
         </div>
