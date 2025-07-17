@@ -20,7 +20,7 @@ export function Modal({ title, onClose, onConfirm, initialName = '', initialDepe
     if (isSubProcess) {
       onConfirm(name, dependency, seq); // Pass dependency and seq for sub-process
     } else {
-      onConfirm(name, dependency); // Name and dependency for process title
+      onConfirm(name, dependency, seq); // Pass dependency and seq for process title
     }
   };
 
@@ -41,25 +41,21 @@ export function Modal({ title, onClose, onConfirm, initialName = '', initialDepe
         <input
           type="text"
           id="name-input"
-          className="w-full p-2 border border-gray-300 rounded-md mb-4"
+          className="w-full p-2 border border-gray-300 rounded-md mb-4 text-gray-800"
           value={name}
           onChange={(e) => setName(e.target.value)}
         />
 
-        {/* Sequence number input for sub-processes */}
-        {isSubProcess && (
-          <>
-            <label htmlFor="seq-input" className="block text-sm font-medium text-gray-700 mb-1">Sequence Number:</label>
-            <input
-              type="number"
-              id="seq-input"
-              className="w-full p-2 border border-gray-300 rounded-md mb-4"
-              value={seq}
-              onChange={(e) => setSeq(parseInt(e.target.value) || 1)}
-              min="1"
-            />
-          </>
-        )}
+        {/* Sequence number input for both process titles and sub-processes */}
+        <label htmlFor="seq-input" className="block text-sm font-medium text-gray-700 mb-1">Sequence Number:</label>
+        <input
+          type="number"
+          id="seq-input"
+          className="w-full p-2 border border-gray-300 rounded-md mb-4 text-gray-800"
+          value={seq}
+          onChange={(e) => setSeq(parseInt(e.target.value) || 1)}
+          min="1"
+        />
 
         {/* Dependency dropdown for process titles and sub-processes */}
         {(!isSubProcess && processTitles.length > 0) && (
@@ -67,7 +63,7 @@ export function Modal({ title, onClose, onConfirm, initialName = '', initialDepe
             <label htmlFor="dependency-select" className="block text-sm font-medium text-gray-700 mb-1">Depends on (Optional):</label>
             <select
               id="dependency-select"
-              className="w-full p-2 border border-gray-300 rounded-md bg-white mb-4"
+              className="w-full p-2 border border-gray-300 rounded-md bg-white mb-4 text-gray-800"
               value={dependency}
               onChange={(e) => setDependency(e.target.value)}
             >
@@ -83,7 +79,7 @@ export function Modal({ title, onClose, onConfirm, initialName = '', initialDepe
             <label htmlFor="subprocess-dependency-select" className="block text-sm font-medium text-gray-700 mb-1">Depends on (Optional):</label>
             <select
               id="subprocess-dependency-select"
-              className="w-full p-2 border border-gray-300 rounded-md bg-white mb-4"
+              className="w-full p-2 border border-gray-300 rounded-md bg-white mb-4 text-gray-800"
               value={dependency}
               onChange={(e) => setDependency(e.target.value)}
               disabled={subProcesses.length === 0}

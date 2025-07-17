@@ -144,7 +144,15 @@ export default function Home() {
 
     const unsubscribeProcessTitles = onSnapshot(query(processTitlesCollectionGroupRef), (snapshot) => {
       const fetchedTitles = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data(), userId: doc.ref.parent.parent.id })); // Capture userId
-      fetchedTitles.sort((a, b) => a.name.localeCompare(b.name));
+      // Sort by sequence number, then by name as fallback
+      fetchedTitles.sort((a, b) => {
+        const seqA = a.seq || 999;
+        const seqB = b.seq || 999;
+        if (seqA !== seqB) {
+          return seqA - seqB;
+        }
+        return a.name.localeCompare(b.name);
+      });
       setProcessTitles(fetchedTitles);
       setLoadingData(false);
 
@@ -212,7 +220,7 @@ export default function Home() {
   }, [db, currentUser?.uid, activeProcessTitleId, selectedSubProcess, firebaseApp.options.appId, processTitles]); // Added processTitles to dependencies
 
   // --- Handlers for Process Titles ---
-  const handleAddProcessTitle = async (name, dependsOn) => {
+  const handleAddProcessTitle = async (name, dependsOn, seq) => {
     if (!db || !currentUser?.uid) {
       alert("Database not ready. Please wait for authentication or configure Firebase.");
       return;
@@ -224,7 +232,7 @@ export default function Home() {
     }
     try {
       // Save new process title under the CURRENT user's ID
-      await setDoc(doc(db, `artifacts/${firebaseApp.options.appId}/users/${currentUser?.uid}/processTitles`, newId), { name, dependsOn: dependsOn || null });
+      await setDoc(doc(db, `artifacts/${firebaseApp.options.appId}/users/${currentUser?.uid}/processTitles`, newId), { name, dependsOn: dependsOn || null, seq: seq || 1 });
       console.log("Process title added:", name);
       // setActiveProcessTitleId(newId); // This will be handled by the onSnapshot listener
     } catch (e) {
@@ -233,7 +241,7 @@ export default function Home() {
     }
   };
 
-  const handleEditProcessTitle = async (id, newName, newDependsOn) => {
+  const handleEditProcessTitle = async (id, newName, newDependsOn, newSeq) => {
     if (!db || !currentUser?.uid) {
       alert("Database not ready. Please wait for authentication or configure Firebase.");
       return;
@@ -247,7 +255,8 @@ export default function Home() {
     try {
       await updateDoc(doc(db, `artifacts/${firebaseApp.options.appId}/users/${processTitleOwnerUserId}/processTitles`, id), {
         name: newName,
-        dependsOn: newDependsOn || null
+        dependsOn: newDependsOn || null,
+        seq: newSeq || 1
       });
       console.log(`Process title ${newName} updated.`);
     } catch (e) {
@@ -488,6 +497,7 @@ export default function Home() {
                       }`}
                       onClick={() => setActiveProcessTitleId(pt.id)}
                     >
+                      <span className="text-sm text-gray-500 font-mono mr-2 min-w-[2rem]">{pt.seq || 1} →</span>
                       {pt.name}
                     </button>
                     <button
@@ -545,7 +555,7 @@ export default function Home() {
                       onClick={() => setSelectedSubProcess(sp)}
                     >
                       <div className="flex items-center flex-grow">
-                        <span className="text-sm text-gray-500 font-mono mr-2 min-w-[2rem]">→ {sp.seq || 1}</span>
+                        <span className="text-sm text-gray-500 font-mono mr-2 min-w-[2rem]">{sp.seq || 1} →</span>
                         <span className={`${selectedSubProcess?.id === sp.id ? 'text-blue-800' : 'text-gray-800'} font-semibold`}>{sp.name}</span>
                       </div>
                       <div className="flex-shrink-0 flex items-center space-x-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
@@ -593,12 +603,13 @@ export default function Home() {
           <Modal
             title="Add Process Title"
             onClose={() => setIsAddProcessTitleModalOpen(false)}
-            onConfirm={async (newName, newDependsOn) => {
-              await handleAddProcessTitle(newName, newDependsOn);
+            onConfirm={async (newName, newDependsOn, newSeq) => {
+              await handleAddProcessTitle(newName, newDependsOn, newSeq);
               setIsAddProcessTitleModalOpen(false);
             }}
             initialName=""
             initialDependency=""
+            initialSeq={1}
             processTitles={processTitles}
           />
         )}
@@ -608,11 +619,12 @@ export default function Home() {
           <Modal
             title="Edit Process Title"
             onClose={() => { setIsEditProcessTitleModalOpen(false); setProcessTitleToEdit(null); }}
-            onConfirm={async (newName, newDependsOn) => {
-              await handleEditProcessTitle(processTitleToEdit.id, newName, newDependsOn);
+            onConfirm={async (newName, newDependsOn, newSeq) => {
+              await handleEditProcessTitle(processTitleToEdit.id, newName, newDependsOn, newSeq);
             }}
             initialName={processTitleToEdit.name}
             initialDependency={processTitleToEdit.dependsOn}
+            initialSeq={processTitleToEdit.seq || 1}
             processTitles={processTitles}
           />
         )}
