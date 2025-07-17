@@ -120,7 +120,12 @@ export default function Home() {
     setPersistence(auth, browserSessionPersistence).then(() => {
       const unsubscribe = onAuthStateChanged(auth, async (user) => {
         if (user) {
-          setCurrentUser({ email: user.email, uid: user.uid });
+          setCurrentUser({
+            email: user.email,
+            uid: user.uid,
+            displayName: user.displayName,
+            photoURL: user.photoURL
+          });
           // Debug log for email and allowed editors
           const normalizedUserEmail = user.email ? user.email.toLowerCase().trim() : '';
           const normalizedAllowed = ALLOWED_EDITORS.map(e => e.toLowerCase().trim());

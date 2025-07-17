@@ -28,19 +28,28 @@ export default function Layout({ children, user, onAddProcessTitle, processTitle
         <link rel="icon" href="/favicon.ico" />
       </Head>
 
-      <header className="bg-gray-900 text-white p-4 shadow-md flex justify-between items-center">
+      <header className="bg-indigo-800 text-white p-4 shadow-md flex justify-between items-center">
         <h1 className="text-2xl font-bold">Verspeeten CI Management</h1>
         <div className="flex items-center space-x-4">
           <span className="text-sm text-gray-300">
-            {user?.email ? `User: ${user.email}` : user?.uid ? `User ID: ${user.uid}` : 'Guest'}
+            {user?.email ? user.email.split('@')[0] : user?.uid ? user.uid : 'Guest'}
           </span>
           {user && (user.email || user.uid) && (
             <>
               <button
-                className="bg-red-500 hover:bg-red-600 text-white font-bold py-2 px-4 rounded-lg transition-colors duration-200"
+                className="bg-gray-200 hover:bg-red-500 text-gray-800 hover:text-white font-bold py-2 px-3 rounded-lg flex items-center gap-2 transition-colors duration-200"
                 onClick={onLogout}
+                title="Sign out"
+                aria-label="Sign out"
               >
-                Logout
+                {/* Open door ajar icon */}
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <rect x="6" y="3" width="9" height="18" rx="2" fill="none" stroke="currentColor" strokeWidth="1.5"/>
+                  <path d="M15 3v18" stroke="currentColor" strokeWidth="1.5"/>
+                  <circle cx="9" cy="12" r="1" fill="currentColor"/>
+                  <path d="M21 17V7a2 2 0 0 0-2-2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                </svg>
+                <span className="hidden sm:inline">Logout</span>
               </button>
             </>
           )}

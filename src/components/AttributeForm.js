@@ -1046,11 +1046,14 @@ export default function AttributeForm({ subProcess, onSave, onFupChanged }) {
               </button>
               <button
                 onClick={() => handleRemoveAttribute(key)}
-                className="text-red-500 hover:text-red-700 p-1"
+                className="text-gray-500 hover:text-red-600 p-1"
                 title="Delete Attribute"
+                style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}
               >
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                {/* Door/logout icon */}
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <rect x="3" y="4" width="12" height="16" rx="2" fill="none" stroke="currentColor" strokeWidth="1.5" />
+                  <path d="M16 12h5m-2-2v4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
                 </svg>
               </button>
             </div>
