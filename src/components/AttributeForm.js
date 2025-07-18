@@ -624,6 +624,18 @@ export default function AttributeForm({ subProcess, onSave, onFupChanged }) {
     setFupLoading(false);
   };
 
+  // Auto-suggest next sequence number when starting a new attribute (not editing)
+  useEffect(() => {
+    if (!editKey) {
+      // Find max sequence number in current attributes
+      const seqs = Object.values(attributes)
+        .map(attr => (attr && typeof attr === 'object' && attr.seq !== undefined ? Number(attr.seq) : 0));
+      const maxSeq = seqs.length > 0 ? Math.max(...seqs) : 0;
+      setNewAttributeSeq(maxSeq + 1);
+    }
+    // Only run when attributes or editKey changes
+  }, [attributes, editKey]);
+
   return (
     <div>
       {/* Error notification */}
@@ -666,54 +678,55 @@ export default function AttributeForm({ subProcess, onSave, onFupChanged }) {
       )}
       <h4 className="text-md font-bold mb-2 text-gray-800">{editKey ? 'Edit Attribute' : 'Add New Attribute'}</h4>
       <div className="space-y-2 mb-6">
-        {/* Replace the attribute name TextField with MUI Autocomplete */}
-        <Autocomplete
-          freeSolo
-          options={attributeNameSuggestions.map(s => s.name)}
-          value={newAttributeKey}
-          onInputChange={(event, newInputValue, reason) => {
-            setNewAttributeKey(newInputValue);
-            // If user types a name that matches a suggestion, set the type
-            const match = attributeNameSuggestions.find(s => s.name === newInputValue);
-            if (match) setNewAttributeType(match.type);
-          }}
-          onChange={(event, newValue) => {
-            if (typeof newValue === 'string') {
-              setNewAttributeKey(newValue);
-              // If it's a new name, default to string type
-              setNewAttributeType('string');
-              addAttributeNameToFirestore(newValue, 'string');
-            } else if (newValue && newValue.inputValue) {
-              setNewAttributeKey(newValue.inputValue);
-              setNewAttributeType('string');
-              addAttributeNameToFirestore(newValue.inputValue, 'string');
-            } else if (newValue) {
-              setNewAttributeKey(newValue);
-              const match = attributeNameSuggestions.find(s => s.name === newValue);
+        {/* Row for sequence number and attribute name */}
+        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', marginBottom: 8 }}>
+          <TextField
+            label="Sequence Number"
+            variant="outlined"
+            size="small"
+            type="number"
+            value={newAttributeSeq}
+            onChange={e => setNewAttributeSeq(e.target.value)}
+            style={{ width: 120 }}
+          />
+          <Autocomplete
+            freeSolo
+            options={attributeNameSuggestions.map(s => s.name)}
+            value={newAttributeKey}
+            onInputChange={(event, newInputValue, reason) => {
+              setNewAttributeKey(newInputValue);
+              // If user types a name that matches a suggestion, set the type
+              const match = attributeNameSuggestions.find(s => s.name === newInputValue);
               if (match) setNewAttributeType(match.type);
-            }
-          }}
-          renderInput={(params) => (
-            <TextField
-              {...params}
-              label="Attribute Name"
-              variant="outlined"
-              size="small"
-              style={{ marginBottom: 8 }}
-              fullWidth
-            />
-          )}
-        />
-        {/* Add Sequence Number input to the form UI */}
-        <TextField
-          label="Sequence Number"
-          variant="outlined"
-          size="small"
-          type="number"
-          value={newAttributeSeq}
-          onChange={e => setNewAttributeSeq(e.target.value)}
-          style={{ marginBottom: 8, width: 140 }}
-        />
+            }}
+            onChange={(event, newValue) => {
+              if (typeof newValue === 'string') {
+                setNewAttributeKey(newValue);
+                // If it's a new name, default to string type
+                setNewAttributeType('string');
+                addAttributeNameToFirestore(newValue, 'string');
+              } else if (newValue && newValue.inputValue) {
+                setNewAttributeKey(newValue.inputValue);
+                setNewAttributeType('string');
+                addAttributeNameToFirestore(newValue.inputValue, 'string');
+              } else if (newValue) {
+                setNewAttributeKey(newValue);
+                const match = attributeNameSuggestions.find(s => s.name === newValue);
+                if (match) setNewAttributeType(match.type);
+              }
+            }}
+            renderInput={(params) => (
+              <TextField
+                {...params}
+                label="Attribute Name"
+                variant="outlined"
+                size="small"
+                fullWidth
+              />
+            )}
+            style={{ flex: 1 }}
+          />
+        </div>
         {/* Flex row for type and value */}
         <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
           <Select
@@ -721,7 +734,7 @@ export default function AttributeForm({ subProcess, onSave, onFupChanged }) {
             onChange={e => setNewAttributeType(e.target.value)}
             variant="outlined"
             size="small"
-            style={{ marginBottom: 8, width: 90 }}
+            style={{ marginBottom: 8, width: 120 }}
           >
             <MenuItem value="string">String</MenuItem>
             <MenuItem value="number">Number</MenuItem>
