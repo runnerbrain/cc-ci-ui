@@ -103,6 +103,8 @@ export default function AttributeForm({ subProcess, onSave, onFupChanged }) {
   const [fupInput, setFupInput] = useState('');
   const [fupLoading, setFupLoading] = useState(false);
   const [fupError, setFupError] = useState('');
+  // Add state for sequence number
+  const [newAttributeSeq, setNewAttributeSeq] = useState(1);
 
   // Use the context to get Firebase instances
   const firebaseContext = useContext(FirebaseContext);
@@ -305,6 +307,7 @@ export default function AttributeForm({ subProcess, onSave, onFupChanged }) {
     if (attr && typeof attr === 'object' && attr.type) {
       setNewAttributeType(attr.type);
       setNewAttributeValue(attr.value);
+      setNewAttributeSeq(attr.seq || 1);
       if (attr.type === 'object' && attr.value && typeof attr.value === 'object' && !Array.isArray(attr.value)) {
         setObjectFields(
           Object.entries(attr.value).map(([k, v]) => {
@@ -327,6 +330,7 @@ export default function AttributeForm({ subProcess, onSave, onFupChanged }) {
     } else {
       setNewAttributeType('string');
       setNewAttributeValue(Array.isArray(attr) ? attr.join(', ') : attr);
+      setNewAttributeSeq(1);
       setObjectFields([{ key: '', value: '', type: 'string' }]);
     }
   };
@@ -399,7 +403,7 @@ export default function AttributeForm({ subProcess, onSave, onFupChanged }) {
       }
       value = obj;
     }
-    const attrObj = { type: newAttributeType, value };
+    const attrObj = { type: newAttributeType, value, seq: Number(newAttributeSeq) || 999 };
     if (editKey) {
       if (editOriginalKey !== newAttributeKey.trim()) {
         delete newAttrs[editOriginalKey];
@@ -417,6 +421,7 @@ export default function AttributeForm({ subProcess, onSave, onFupChanged }) {
     setNewAttributeValue('');
     setObjectFields([{ key: '', value: '', type: 'string' }]);
     setNewAttributeType('string');
+    setNewAttributeSeq(1);
     setEditKey(null);
     setEditOriginalKey(null);
     // Show saved notification
@@ -698,6 +703,16 @@ export default function AttributeForm({ subProcess, onSave, onFupChanged }) {
               fullWidth
             />
           )}
+        />
+        {/* Add Sequence Number input to the form UI */}
+        <TextField
+          label="Sequence Number"
+          variant="outlined"
+          size="small"
+          type="number"
+          value={newAttributeSeq}
+          onChange={e => setNewAttributeSeq(e.target.value)}
+          style={{ marginBottom: 8, width: 140 }}
         />
         {/* Flex row for type and value */}
         <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
@@ -990,6 +1005,7 @@ export default function AttributeForm({ subProcess, onSave, onFupChanged }) {
               setNewAttributeValue('');
               setObjectFields([{ key: '', value: '', type: 'string' }]);
               setNewAttributeType('string');
+              setNewAttributeSeq(1);
             }}
             className="w-full bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-2 px-4 rounded-lg transition-colors duration-200 mt-2"
           >
@@ -1000,66 +1016,76 @@ export default function AttributeForm({ subProcess, onSave, onFupChanged }) {
       {Object.keys(attributes).length === 0 && (
         <p className="text-gray-500 italic mb-4">No attributes defined. Add one above!</p>
       )}
-      {Object.entries(attributes).map(([key, attr]) => (
-        <div key={key} className="relative group mb-4 p-3 bg-gray-100 rounded-lg">
-          <div className="flex items-center justify-between">
-            <div>
-              <label className="block text-sm font-extrabold text-gray-700 mb-1">{key}</label>
-              <div className={`text-base text-gray-800 bg-white px-2 py-1 rounded select-text ${styles.attributeValueInter}`}> 
-                {/* Improved recursive display logic for nested objects */}
-                {attr && typeof attr === 'object' && attr.type
-                  ? renderAttributeValue(attr.value, attr.type)
-                  : Array.isArray(attr) ? attr.join(', ') : String(attr)
-                }
+      {Object.entries(attributes)
+        .sort((a, b) => {
+          const seqA = (a[1] && typeof a[1] === 'object' && a[1].seq !== undefined) ? a[1].seq : 999;
+          const seqB = (b[1] && typeof b[1] === 'object' && b[1].seq !== undefined) ? b[1].seq : 999;
+          if (seqA !== seqB) return seqA - seqB;
+          return a[0].localeCompare(b[0]);
+        })
+        .map(([key, attr]) => (
+          <div key={key} className="relative group mb-4 p-3 bg-gray-100 rounded-lg">
+            <div className="flex items-center justify-between">
+              <div>
+                <label className="block text-sm font-extrabold text-gray-700 mb-1">
+                  <span style={{ marginRight: 8, color: '#888', fontWeight: 600 }}>{(attr && typeof attr === 'object' && attr.seq !== undefined) ? attr.seq : 1} →</span>
+                  {key}
+                </label>
+                <div className={`text-base text-gray-800 bg-white px-2 py-1 rounded select-text ${styles.attributeValueInter}`}> 
+                  {/* Improved recursive display logic for nested objects */}
+                  {attr && typeof attr === 'object' && attr.type
+                    ? renderAttributeValue(attr.value, attr.type)
+                    : Array.isArray(attr) ? attr.join(', ') : String(attr)
+                  }
+                </div>
+              </div>
+              <div className="flex items-center space-x-2 ml-4">
+                {/* Soccer corner flag icon for follow-up */}
+                <button
+                  onClick={() => openFupModal(key)}
+                  className="p-1"
+                  title={attributeFupStatus[key]?.exists ? (attributeFupStatus[key].status === 'resolved' ? 'Follow-up resolved' : 'View follow-up') : 'Add follow-up'}
+                  style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                >
+                  {attributeFupStatus[key]?.exists && attributeFupStatus[key].status === 'open' ? (
+                    // Solid red soccer corner flag
+                    <svg width="18" height="18" viewBox="0 0 18 18" style={{ display: 'block' }}>
+                      <rect x="3" y="3" width="2" height="12" rx="1" fill="#b91c1c" />
+                      <polygon points="5,3 14,6 5,9" fill="#b91c1c" />
+                    </svg>
+                  ) : (
+                    // Faint outline soccer corner flag
+                    <svg width="18" height="18" viewBox="0 0 18 18" style={{ display: 'block' }}>
+                      <rect x="3" y="3" width="2" height="12" rx="1" fill="none" stroke="#aaa" strokeWidth="1.2" />
+                      <polygon points="5,3 14,6 5,9" fill="none" stroke="#aaa" strokeWidth="1.2" />
+                    </svg>
+                  )}
+                </button>
+                <button
+                  onClick={() => handleEditAttribute(key)}
+                  className="text-blue-500 hover:text-blue-700 p-1"
+                  title="Edit Attribute"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536M9 13h3l8-8a2.828 2.828 0 00-4-4l-8 8v3zm0 0v3h3" />
+                  </svg>
+                </button>
+                <button
+                  onClick={() => handleRemoveAttribute(key)}
+                  className="text-gray-500 hover:text-red-600 p-1"
+                  title="Delete Attribute"
+                  style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                >
+                  {/* Door/logout icon */}
+                  <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <rect x="3" y="4" width="12" height="16" rx="2" fill="none" stroke="currentColor" strokeWidth="1.5" />
+                    <path d="M16 12h5m-2-2v4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                </button>
               </div>
             </div>
-            <div className="flex items-center space-x-2 ml-4">
-              {/* Soccer corner flag icon for follow-up */}
-              <button
-                onClick={() => openFupModal(key)}
-                className="p-1"
-                title={attributeFupStatus[key]?.exists ? (attributeFupStatus[key].status === 'resolved' ? 'Follow-up resolved' : 'View follow-up') : 'Add follow-up'}
-                style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-              >
-                {attributeFupStatus[key]?.exists && attributeFupStatus[key].status === 'open' ? (
-                  // Solid red soccer corner flag
-                  <svg width="18" height="18" viewBox="0 0 18 18" style={{ display: 'block' }}>
-                    <rect x="3" y="3" width="2" height="12" rx="1" fill="#b91c1c" />
-                    <polygon points="5,3 14,6 5,9" fill="#b91c1c" />
-                  </svg>
-                ) : (
-                  // Faint outline soccer corner flag
-                  <svg width="18" height="18" viewBox="0 0 18 18" style={{ display: 'block' }}>
-                    <rect x="3" y="3" width="2" height="12" rx="1" fill="none" stroke="#aaa" strokeWidth="1.2" />
-                    <polygon points="5,3 14,6 5,9" fill="none" stroke="#aaa" strokeWidth="1.2" />
-                  </svg>
-                )}
-              </button>
-              <button
-                onClick={() => handleEditAttribute(key)}
-                className="text-blue-500 hover:text-blue-700 p-1"
-                title="Edit Attribute"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536M9 13h3l8-8a2.828 2.828 0 00-4-4l-8 8v3zm0 0v3h3" />
-                </svg>
-              </button>
-              <button
-                onClick={() => handleRemoveAttribute(key)}
-                className="text-gray-500 hover:text-red-600 p-1"
-                title="Delete Attribute"
-                style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-              >
-                {/* Door/logout icon */}
-                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <rect x="3" y="4" width="12" height="16" rx="2" fill="none" stroke="currentColor" strokeWidth="1.5" />
-                  <path d="M16 12h5m-2-2v4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
-              </button>
-            </div>
           </div>
-        </div>
-      ))}
+        ))}
       {/* Follow-up modal */}
       <Dialog open={fupModalOpen} onClose={() => setFupModalOpen(false)}>
         <DialogTitle>Attribute Follow-up</DialogTitle>
