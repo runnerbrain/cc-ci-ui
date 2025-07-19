@@ -12,29 +12,29 @@ import { ALLOWED_EDITORS } from '../lib/allowedEditors';
 import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
 
-// Helper to clean up attributeNames after subprocess delete
-const cleanupAttributeNamesAfterSubprocessDelete = async (attrNames) => {
-  if (!db || !attrNames || attrNames.length === 0) return;
-  const subProcessSnapshots = await getDocs(collectionGroup(db, 'subProcesses'));
-  for (const attrName of attrNames) {
-    let found = false;
-    subProcessSnapshots.forEach(docSnap => {
-      const attrs = docSnap.data().attributes || {};
-      if (Object.keys(attrs).includes(attrName)) {
-        found = true;
-      }
-    });
-    if (!found) {
-      await deleteDoc(doc(db, 'attributeNames', attrName));
-    }
-  }
-};
-
 export default function Home() {
   const firebaseApp = useContext(FirebaseContext);
   const db = firebaseApp ? getFirestore(firebaseApp) : null;
   const auth = firebaseApp ? getAuth(firebaseApp) : null;
   const router = useRouter();
+
+  // Helper to clean up attributeNames after subprocess delete
+  const cleanupAttributeNamesAfterSubprocessDelete = async (attrNames) => {
+    if (!db || !attrNames || attrNames.length === 0) return;
+    const subProcessSnapshots = await getDocs(collectionGroup(db, 'subProcesses'));
+    for (const attrName of attrNames) {
+      let found = false;
+      subProcessSnapshots.forEach(docSnap => {
+        const attrs = docSnap.data().attributes || {};
+        if (Object.keys(attrs).includes(attrName)) {
+          found = true;
+        }
+      });
+      if (!found) {
+        await deleteDoc(doc(db, 'attributeNames', attrName));
+      }
+    }
+  };
 
   const [currentUser, setCurrentUser] = useState(null);
   const [loadingFirebase, setLoadingFirebase] = useState(true);
@@ -769,7 +769,12 @@ export default function Home() {
               setSubProcessNameInput("");
             }}
             initialName={subProcessNameInput}
-            initialSeq={1}
+            initialSeq={(() => {
+              const list = subProcesses[activeProcessTitleId] || [];
+              if (list.length === 0) return 1;
+              const maxSeq = Math.max(...list.map(sp => typeof sp.seq === 'number' ? sp.seq : 0));
+              return maxSeq + 1;
+            })()}
             isSubProcess={true}
             subProcesses={(subProcesses[activeProcessTitleId] || [])}
           />

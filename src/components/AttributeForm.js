@@ -1040,7 +1040,7 @@ export default function AttributeForm({ subProcess, onSave, onFupChanged }) {
           <div key={key} className="relative group mb-4 p-3 bg-gray-100 rounded-lg">
             <div className="flex items-center justify-between">
               <div>
-                <label className="block text-sm font-extrabold text-gray-700 mb-1">
+                <label className={`${styles.attributeNameLabel} block text-sm mb-1`}>
                   <span style={{ marginRight: 8, color: '#888', fontWeight: 600 }}>{(attr && typeof attr === 'object' && attr.seq !== undefined) ? attr.seq : 1} →</span>
                   {key}
                 </label>
@@ -1052,7 +1052,7 @@ export default function AttributeForm({ subProcess, onSave, onFupChanged }) {
                   }
                 </div>
               </div>
-              <div className="flex items-center space-x-2 ml-4">
+              <div className={`flex items-center space-x-2 ml-4 ${styles.attributeActionGroup}`}>
                 {/* Soccer corner flag icon for follow-up */}
                 <button
                   onClick={() => openFupModal(key)}
