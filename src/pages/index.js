@@ -359,25 +359,28 @@ export default function Home() {
   };
 
   // --- Handlers for Sub-processes ---
-  const handleAddSubProcess = async (name, dependsOn, seq) => {
+  const handleAddSubProcess = async (name, dependsOn) => {
     if (!db || !currentUser?.uid || !activeProcessTitleId) {
       alert("Please select a Process Title first or configure Firebase.");
       return;
     }
-    // Find the userId owner of the active process title
+    // Find the owner of the process title
     const processTitleOwnerUserId = processTitles.find(pt => pt.id === activeProcessTitleId)?.userId;
     if (!processTitleOwnerUserId) {
-      alert("Process title not found.");
+      alert("Process title owner not found.");
       return;
     }
+
     const newId = `SP_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+    const defaultAttributes = {
+      "Workflow":    { type: "rtf", value: "", seq: 1 },
+      "Role":        { type: "rtf", value: "", seq: 2 },
+      "Tools":       { type: "rtf", value: "", seq: 3 },
+      "Data.Input":  { type: "rtf", value: "", seq: 4 },
+      "Data.Output": { type: "rtf", value: "", seq: 5 }
+    };
     try {
-      await setDoc(doc(db, `artifacts/${firebaseApp.options.appId}/users/${processTitleOwnerUserId}/processTitles/${activeProcessTitleId}/subProcesses`, newId), { 
-        name, 
-        attributes: {}, 
-        dependsOn: dependsOn || null,
-        seq: seq || 1
-      });
+      await setDoc(doc(db, `artifacts/${firebaseApp.options.appId}/users/${processTitleOwnerUserId}/processTitles/${activeProcessTitleId}/subProcesses`, newId), { name, attributes: defaultAttributes, dependsOn: dependsOn || null });
       console.log("Sub-process added:", name);
     } catch (e) {
       console.error("Error adding sub-process: ", e);
@@ -763,8 +766,8 @@ export default function Home() {
           <Modal
             title="Add Sub-process"
             onClose={() => { setIsAddSubProcessModalOpen(false); setSubProcessNameInput(""); }}
-            onConfirm={async (name, dependsOn, seq) => {
-              await handleAddSubProcess(name, dependsOn, seq);
+            onConfirm={async (name, dependsOn) => {
+              await handleAddSubProcess(name, dependsOn);
               setIsAddSubProcessModalOpen(false);
               setSubProcessNameInput("");
             }}
